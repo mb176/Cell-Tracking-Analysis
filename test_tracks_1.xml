@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Tracks nTracks="3007" spaceUnits="pixel" frameInterval="1.0" timeUnits="sec" generationDateTime="Wed, 10 Nov 2021 00:00:05" from="TrackMate v7.3.1">
+<particle nSpots="7">
+    <detection t="0" x="0" y="0" z="0.0" />
+    <detection t="1" x="1" y="0" z="0.0" />
+    <detection t="2" x="2" y="0" z="0.0" />
+    <detection t="3" x="3" y="0" z="0.0" />
+    <detection t="4" x="2" y="0" z="0.0" />
+    <detection t="5" x="1" y="0" z="0.0" />
+    <detection t="6" x="0" y="0" z="0.0" />
+</particle>
