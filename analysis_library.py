@@ -106,9 +106,9 @@ class experiment:
 
     def set_max_distance(self):
         if(self.periodic==False):
-            self.max_distance = np.sqrt(self.x_max**2+self.y_max**2)
+            self.max_distance = np.sqrt(self.x_max**2+self.y_max**2)*1.01 #Some wiggle room in case a point is exactly at max distane
         elif(self.periodic==True):
-            self.max_distance = np.sqrt((self.x_max**2+self.y_max**2)/4)
+            self.max_distance = np.sqrt((self.x_max**2+self.y_max**2)/4)*1.01
 
 
     def distance(self, r):
@@ -364,7 +364,7 @@ class experiment:
         reference_density = (n_distances/n_reference_distances)*self.reference_histogram
         cutoff = int(np.floor(n_bins*cutoff_percentange/100)) #Cutoff tail end of the histogarm to avoid dividing by 0
         radial_density = np.divide(histogram[:-cutoff],reference_density[:-cutoff])
-        #radial_density = histogram[:-cutoff]
+        # radial_density = histogram[:-cutoff]
 
         #Plot Histogram
         if no_plot==False:

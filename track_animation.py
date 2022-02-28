@@ -54,10 +54,12 @@ def getColors(colorMeasurement): ##ToDo: Get right colors
 
 
 #SOURCE_FOLDER = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', "output"))+"/" #wtf python
-#NAME = "test_parameters_tracks"
 
-#Source file
-PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/test/test_parameters"]
+#Parameter file given externally:
+PATHS = [sys.argv[1]]
+
+#Give parameter file manually
+# PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/test/test_parameters"]
 # PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/LowDensity/LowDensity",
 #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensity/HighDensity",
 #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensityControl/HighDensityControl"]
