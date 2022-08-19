@@ -7,45 +7,28 @@ from matplotlib import animation
 import copy
 import sys
 # insert at 1, 0 is the script path (or '' in REPL)
-sys.path.insert(1, '/home/marius/PhD/CellMotility/analysis/')
+# sys.path.insert(1, '/home/marius/PhD/CellMotility/analysis/')
 from analysis_library import *
 plt.style.use('seaborn-whitegrid')
 plt.close("all")
 
-
-#Parameter file given externally:
-PATHS = [sys.argv[1]]
-
-#Give parameter file manually
-# PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/test/test_parameters"]
-# PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/LowDensity/LowDensity",
-#         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensity/HighDensity",
-#         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensityControl/HighDensityControl"]
-
+if(len(sys.argv)==2):
+    #Parameter file given externally:
+    PATHS = [sys.argv[1]]
+else:
+    #Give parameter file manually
+    PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/validation/MIPS/ABP_MIPS_harmonic"]
+    # PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/LowDensity/LowDensity",
+    #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensity/HighDensity",
+    #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensityControl/HighDensityControl"]
 
 
 for PATH in PATHS:
-    #Load the data
-    green = experiment(PATH)
-    green.read_csv(PATH+"_tracks.csv")
-    params = green.read_parameter_file(PATH)
-
-
-    # Global parameters
-    min_length = 0 #Tracks shorter than that are excluded
-    nGreenParticles = int(params["nGreenParticles"])
-    nRedParticles = int(params["nRedParticles"])
-
-    #split up red and green particles (the original experiment will store green tracks)
-    red = copy.deepcopy(green)
-    green.tracks = green.tracks[:nGreenParticles]
-    green.color = green.color[:nGreenParticles]
-    red.tracks = red.tracks[nGreenParticles:nGreenParticles+nRedParticles]
-    red.color = red.color[nGreenParticles:nGreenParticles+nRedParticles]
+    green, red, params = load_simulation_data(PATH)
 
     # #Plot both Tortuosities 
-    # min_length_tortuosity = 10
-    # delta_t = 5 #time interval for Dun method
+    # min_length_tortuosity = 0.4
+    # delta_t = 0.2 #time interval for Dun method
     # n_bins = 30
 
     # #Dun method 
@@ -66,9 +49,9 @@ for PATH in PATHS:
 
     # #Plot RDF Slideshow
     # n_bins = 300 
-    # cutoff_percentage = 1
+    # cutoff_percentage = 60
     # n_reference_points = 2000
-    # times = np.linspace(0,90,10)
+    # times = np.array([500, 2000, 3000, 4000] )#np.linspace(0,250,6)
     # for time in times:
     #     fig, axes = plt.subplots(1,1)
     #     #Green particles
@@ -82,8 +65,28 @@ for PATH in PATHS:
     #                                         cutoff_percentage=cutoff_percentage)
     #     bin_size = np.sqrt(green.x_max**2+green.y_max**2)/n_bins
     #     axes.set_title('t = %d, bin size = %f'%(time,bin_size))
-    #     fig.savefig(PATH+'RDF_t_%i_test.png'%time, format='png',dpi=300)
+    #     fig.savefig(PATH+'RDF_t_%i.png'%time, format='png',dpi=300)
+
+
+    #Get final RDF
+    n_bins = 300 
+    cutoff_percentage = 60
+    n_reference_points = 2000
+    fig, axes = plt.subplots(1,1)
+    t_final = green.tracks[0][-1][0]
+    #Green particles
+    green.plot_radial_density(axes, t_final , n_bins, 'Green cells','g',cutoff_percentange = cutoff_percentage, 
+                            n_reference_points = n_reference_points)
+    #red particles
+    red.plot_radial_density(axes, t_final , n_bins, 'Red cells','r',cutoff_percentange = cutoff_percentage, 
+                            n_reference_points = n_reference_points)
+    # #red-green crosscorrelation
+    plot_mixed_particle_radial_density(axes, [green,red], t_final ,n_bins, n_reference_points, 
+                                        cutoff_percentage=cutoff_percentage)
+    fig.savefig(PATH+'RDF_t_%i.png'%t_final, format='png',dpi=300)
+
+    
+
     
 
     plt.close("all")
-

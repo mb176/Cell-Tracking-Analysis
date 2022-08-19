@@ -7,7 +7,12 @@ from matplotlib.animation import FuncAnimation
 from matplotlib import animation
 import time
 import csv
+from celluloid import Camera
+from matplotlib.collections import PatchCollection
 from scipy import spatial, ndimage
+import copy
+import networkx as nx
+
 
 
 
@@ -53,7 +58,7 @@ class experiment:
 
         #Read xml file into beautiful soup:
         with open(fileName, 'r') as f:
-             data = f.read()
+            data = f.read()
         Bs_data = BeautifulSoup(data, "xml")
 
         self.periodic = False #This .xml file only exists for experiments, which are not periodic
@@ -81,9 +86,12 @@ class experiment:
         
         self.set_max_distance()
         toc = time.perf_counter()
+
         print(f"Read xml file in {toc - tic:f} seconds")
         
     def read_csv(self, fileName):
+        """Reads the simulation data from a .csv file named fileName and saves the data in experiment.
+        """
         tic = time.perf_counter()
         with open(fileName, mode="r") as file:
             csvFile = csv.reader(file)
@@ -104,11 +112,37 @@ class experiment:
         self.periodic = True #This .csv file only exists for simulations, which are always periodic
         print(f"Read .csv track file in {toc - tic:f} seconds")
 
+    def read_parameter_file(self,file):
+        params = {}
+        """Reads the parameter .txt files used to initialise the C simulation
+        """
+        with open(file, 'r') as reader:
+            for line in reader.readlines():
+                #if line=="\n": break  #Stop when encountering an empty line
+                idx1 = line.find(" ")
+                idx2 = line.find(": ")
+                if(idx2==-1): break #we reached the end of the parameter list
+                name = line[:idx1]
+                value = line[idx2+2:]
+                params[name] = float(value)
+                #print(name+" = %f"%params[name])
+        self.timeStep = float(params["measurementInterval"])
+        self.x_max = float(params["Length"])
+        self.y_max = float(params["Length"])
+        self.set_max_distance()
+        return params
+
     def set_max_distance(self):
         if(self.periodic==False):
             self.max_distance = np.sqrt(self.x_max**2+self.y_max**2)*1.01 #Some wiggle room in case a point is exactly at max distane
         elif(self.periodic==True):
             self.max_distance = np.sqrt((self.x_max**2+self.y_max**2)/4)*1.01
+
+    def find_t_max(self):
+        tMax = 0
+        for track in self.tracks:
+            tMax = max(tMax, track[-1][0])
+        return tMax
 
 
     def distance(self, r):
@@ -121,32 +155,43 @@ class experiment:
             r[1] = min(abs(r[1]),abs(abs(r[1])-self.y_max)) #abs(r[1]) % self.y_max
             return np.linalg.norm(np.array(r))
         else:
-            assert(False), "Invalid value for periodicity"
+            assert(False), "Invalid value for periodicity"  
 
-    
-
-    def read_parameter_file(self,file):
-        params = {}
-        """Reads the parameter .txt files used to initialise the C simulation
+    def MSD(self):
+        """Calculates the mean squared displacement. Accounts for periodic boundary conditions in the simulation.
+        Assumes displacement between steps doesn't exceed half the box.
         """
-        with open(file, 'r') as reader:
-            for line in reader.readlines():
-                if line!="\n":
-                    idx1 = line.find(" ")
-                    idx2 = line.find(": ")
-                    name = line[:idx1]
-                    value = line[idx2+2:]
-                    params[name] = float(value)
-                    #print(name+" = %f"%params[name])
-        self.timeStep = float(params["measurementInterval"])
-        self.x_max = float(params["Length"])
-        self.y_max = float(params["Length"])
-        self.set_max_distance()
-        return params;        
+        MSD = np.zeros(len(self.tracks[0]))
+        time = np.zeros(len(self.tracks[0]))
+        for track in self.tracks:
+            origin = np.array(track[0][1:]) #keeps track of where particle started
+            offset = np.zeros(2) #keeps track of how many times the periodic boundary was crossed
+            oldPosition = origin
+            for tIdx in range(1,len(track)):
+                newPosition = np.array(track[tIdx][1:])
+                displacement = newPosition-oldPosition
+                #check if particle passed boundary
+                if(displacement[0]>self.x_max/2): #crossed lower x boundary
+                    offset[0]-= self.x_max
+                elif(displacement[0] < -self.x_max/2): #crossed upper x boundary
+                    offset[0] += self.x_max       
+                if(displacement[1]>self.y_max/2): #crossed lower y boundary
+                    offset[1]-= self.y_max
+                elif(displacement[1] < -self.y_max/2): #crossed upper y boundary
+                    offset[1] += self.y_max    
+
+                #Update MSD
+                MSD[tIdx] += np.linalg.norm(newPosition+offset-origin)**2
+                time[tIdx] = track[tIdx][0]
+
+                oldPosition = newPosition
+
+        return MSD/len(self.tracks), time
+
 
     def TAMSD(self,delta_t,min_length):
         """Returns the average TAMSD as well as all individual TAMSDs for all tracks in the experiment
-         whose length exceed min_length
+         whose length exceed min_length. WARNING: Not suited for periodic boundary conditions (doesn't undo wraparound)
         :delta_t time interval (in timesteps, not minutes) for which the TAMASD will be computed
         :min_length minimum number of timesteps a track must have to be used for the average
         """
@@ -376,25 +421,6 @@ class experiment:
         
         return histogram, bins, points
 
-    # def animate_radial_density(self, fig, axes, times, n_bins, n_reference_points, color,
-    #                             cutoff_percentage=10):
-    #     histograms = []
-    #     bins = []
-    #     for t in times:
-    #         histogram, bins, points = self.plot_radial_density(axes, t ,n_bins, "t=%f"%t,color, no_plot=False, cutoff_percentange = 10, 
-    #                             n_reference_points=n_reference_points)
-    #         histograms.append(histogram)
-        
-    #     max_y  = max(map(max,histograms)) #biggest value in all histograms
-
-    #     def animate(i):
-    #         axes.clear()
-    #         plt.ylim((0,max_y*1.1))
-    #         axes.plot(bins, histograms[i], color = color, label='t=%e'%times[i])
-    #         axes.legend()
-            
-    #     animation = FuncAnimation(fig=fig, func=animate, frames=len(times), interval=1000)
-    #     return animation
     
 ##################################### End of experiment class ############################################
 
@@ -402,7 +428,7 @@ def plot_mixed_particle_radial_density(axes, experiments, t ,n_bins, n_reference
     """Calculates a histogram of the the distances between the points in the two experiments, i.e. cross radial distribution 
     function. Then plots them to axes.
     :axes Figure on which the plot is drawn
-    :experiments List containing to experiment structs
+    :experiments List containing two experiment structs
     :t Time slice at which the radial distribution function will be conputed
     :n_bins Number of bins in the histogram
     :n_reference_points Number of points used in the computation of the reference histogram used to normalise the density. 
@@ -443,7 +469,7 @@ def plot_mixed_particle_radial_density(axes, experiments, t ,n_bins, n_reference
             for pointB in points2:
                 distances[cnt]=experiments[0].distance(pointA-pointB)
                 cnt+=1
-    
+  
     histogram = ndimage.histogram(distances, 0, max_distance,n_bins)
 
     reference_histogram = experiments[0].generate_reference_histogram(n_reference_points,n_bins)
@@ -462,11 +488,317 @@ def plot_mixed_particle_radial_density(axes, experiments, t ,n_bins, n_reference
         axes.set_xlabel(r'Distance')
         axes.set_ylabel(r'Radial distribution function')
 
+def load_simulation_data(PATH):
+    #Load the data
+    green = experiment(PATH)
+    green.read_csv(PATH+"_tracks.csv")
+    params = green.read_parameter_file(PATH)
+    nGreenParticles = int(params["nGreenParticles"])
+    nRedParticles = int(params["nRedParticles"])
+
+
+    #Don't exclude any tracks
+    min_length = 0 #Tracks shorter than that are excluded
+
+    #split up red and green particles (the simulation has green particles first and red particles second in its list)
+    red = copy.deepcopy(green)
+    green.tracks = green.tracks[:nGreenParticles]
+    green.color = green.color[:nGreenParticles]
+    red.tracks = red.tracks[nGreenParticles:nGreenParticles+nRedParticles]
+    red.color = red.color[nGreenParticles:nGreenParticles+nRedParticles]
+
+    return green, red, params
+
+
+def calculate_mixing_index(experiments, t, neighbourDistance = 2):
+    """Calculates the mixing index of the two cell types. The cells from the first experiment are considered the reference cells, 
+    whose neighbours we count.
+    :experiments List containing two experiments with the tracks
+    :t Time slice at which the mixing index function will be conputed
+    :neighbourDistance How far cells can be apart and still count as
+    """
+    #Barricades
+    assert(len(experiments)==2), "Expect exactly two experiments"
+    assert(experiments[0].periodic == experiments[1].periodic), "Mixing periodic and non-periodic data"
+
+    position_array = []
+    for exp in experiments:
+        points = []
+        for track in exp.tracks:
+            tIdx, = np.where(np.array(track)[:,0]==t)
+            
+            if len(tIdx)>0: #Does the tracked particle exist at t?
+                tIdx = tIdx[0] #first occurence
+                points.append(track[tIdx][1:])
+        position_array.append(points) #has spots from both experiments
+    
+    greenPoints = np.array(position_array[0])
+    redPoints = np.array(position_array[1])
+    nGreen = len(greenPoints)
+    nRed = len(redPoints)
+
+    sameTypeCnt = np.zeros(len(greenPoints)+len(redPoints))        #Counts neighbours of the same type
+    crossTypeCnt = np.zeros(len(greenPoints)+len(redPoints))       #Counts neighbours of the other type
+
+    # print("# same type cells: %i, # other type cells: %i"%(len(referencePoints),len(points)))
+
+    #Same-type neighbours
+    for pIdx1 in range(nGreen):
+        for pIdx2 in range(0,pIdx1):
+            distance = experiments[0].distance(greenPoints[pIdx1]-greenPoints[pIdx2])
+            if(distance < neighbourDistance):
+                sameTypeCnt[pIdx1] +=1
+                sameTypeCnt[pIdx2] +=1
+    
+    for pIdx1 in range(nRed):
+        for pIdx2 in range(0,pIdx1):
+            distance = experiments[0].distance(redPoints[pIdx1]-redPoints[pIdx2])
+            if(distance < neighbourDistance):
+                sameTypeCnt[nGreen+pIdx1] +=1
+                sameTypeCnt[nGreen+pIdx2] +=1
+   
+    #Cross-type neighbours
+    for pIdx1 in range(nGreen):
+        for pIdx2 in range(nRed):
+            distance = experiments[0].distance(greenPoints[pIdx1]-redPoints[pIdx2])    
+            if(distance < neighbourDistance):
+                crossTypeCnt[pIdx1] +=1
+                crossTypeCnt[nGreen+pIdx2] +=1
+
+    #Discard 0 values and calculate mixing index for each particle
+    neighbourCnt = sameTypeCnt+crossTypeCnt
+    sameTypeCnt = np.array([sameTypeCnt[idx] for idx in range(len(neighbourCnt)) if neighbourCnt[idx]>0])
+    crossTypeCnt = np.array([crossTypeCnt[idx] for idx in range(len(neighbourCnt)) if neighbourCnt[idx]>0])
+    neighbourCnt = np.array([neighbourCnt[idx] for idx in range(len(neighbourCnt)) if neighbourCnt[idx]>0])
+    mixing = (sameTypeCnt)/(neighbourCnt)
+
+    #Average
+    mixingIdx = np.sum(mixing)/len(mixing)
+
+    return mixingIdx, mixing
+
+def write_mixing_index(parameters, mixingIdx, FILE_PATH):
+    """Appends the mixing index with it's parameters to FILE_PATH (creates new file if none is there).
+    """
+    file = open(FILE_PATH, "a") #append mode
+    for name in parameters.keys():
+        file.write(name+", %f, "%parameters[name])
+    file.write("mixingIdx, %f \n"%mixingIdx)
+    file.close()
+
+
+def read_mixing_index(FILE_PATH):
+    """Reads all mixing indices and parameter values at FILE_PATH. Assumes format from write_mixing_index
+    and two parameter values.
+    """
+    names = []
+    xValues = []
+    yValues = []
+    mixingIndices = []
+    namesEmpty = True
+    with open(FILE_PATH, 'r') as reader:
+        for line in reader.readlines():
+            idx1 = line.find(", ")
+            idx2 = line.find(", ",idx1+1)
+            idx3 = line.find(", ",idx2+1)
+            idx4 = line.find(", ",idx3+1)
+            idx5 = line.find(", ",idx4+1)
+            idx6 = line.find(" ",idx5+2)
+            if(namesEmpty):
+                names.append(line[:idx1])
+                names.append(line[idx2+2:idx3])
+                namesEmpty=False
+            xValues.append(float(line[idx1+2:idx2]))
+            yValues.append(float(line[idx3+2:idx4]))
+            mixingIndices.append(float(line[idx5+2:idx6]))
+    return xValues, yValues, mixingIndices, names
+
+def max_cluster_size(experiments, t, neighbourDistance = 1.05):
+    #Find the relevant points
+    points = []
+    for exp in experiments:
+        for track in exp.tracks:
+            tIdx, = np.where(np.array(track)[:,0]==t)
+            
+            if len(tIdx)>0: #Does the tracked particle exist at t?
+                tIdx = tIdx[0] #first occurence
+                points.append(np.array(track[tIdx][1:]))
+
+    #Initialise the graph
+    G =  nx.Graph()
+    #Add nodes
+    for nodeIdx in range(len(points)):
+        G.add_node(nodeIdx)
+    #Add edges
+    for pIdx1 in range(len(points)):
+        for pIdx2 in range(pIdx1):
+            distance = experiments[0].distance(points[pIdx1]-points[pIdx2])
+            if(distance < neighbourDistance):
+                G.add_edge(pIdx1, pIdx2)
+                G.add_edge(pIdx2, pIdx1)
+    
+    #get connected components
+    connectedComponentsSize = [len(comp) for comp in nx.connected_components(G)]
+    return max(connectedComponentsSize)
+
+
+
+def plot_cluster_histogram(axes, experiments, t, label ,color, neighbourDistance = 1.05, nBins=None):
+    #Find the relevant points
+    points = []
+    for exp in experiments:
+        for track in exp.tracks:
+            tIdx, = np.where(np.array(track)[:,0]==t)
+            
+            if len(tIdx)>0: #Does the tracked particle exist at t?
+                tIdx = tIdx[0] #first occurence
+                points.append(np.array(track[tIdx][1:]))
+
+    #Initialise the graph
+    G =  nx.Graph()
+    #Add nodes
+    for nodeIdx in range(len(points)):
+        G.add_node(nodeIdx)
+    #Add edges
+    for pIdx1 in range(len(points)):
+        for pIdx2 in range(pIdx1):
+            distance = experiments[0].distance(points[pIdx1]-points[pIdx2])
+            if(distance < neighbourDistance):
+                G.add_edge(pIdx1, pIdx2)
+                G.add_edge(pIdx2, pIdx1)
+    
+    #get connected components
+    connectedComponentsSize = [len(comp) for comp in nx.connected_components(G)]
+    max_size = max(connectedComponentsSize)
+    if (nBins==None):
+        max_size = max(connectedComponentsSize)
+        nBins = max_size#len(connectedComponentsSize)
+    else:
+        max_size = nBins #nBins given externally
+    
+
+    # Use non-equal bin sizes, such that they look equal on log scale.
+    logbins = np.logspace(np.log10(1),np.log10(max_size),nBins)
+
+
+    #histogram = ndimage.histogram(connectedComponentsSize, 1, max_size, n_bins)
+    axes.hist(connectedComponentsSize, bins=logbins, log=True, label = label, color=color, alpha=0.5) #bins="np"
+    axes.set_xscale('log')
+    axes.set_xlabel("Cluster size")
+
+    return connectedComponentsSize
+    
 
 
 
 
+########################################### Animation ########################################################
 
+def readTracksFile(filename):
+    """This is similar to read_csv in analysis library, but has a different output structure and is
+    only used here"""
+    measurementTimes = []
+    positionMeasurements = []
+    colorMeasurements = []
+    with open(filename, mode="r") as file:
+        csvFile = csv.reader(file)
+        for lines in csvFile:
+            measurementTimes.append(float(lines[0])) 
+            positionMeasurements.append([])
+            colorMeasurements.append([])
+            nParticles = int((len(lines)-1)/3)
+            for particleIdx in range(nParticles):
+                colorMeasurements[-1].append(lines[1+3*particleIdx])
+                positionMeasurements[-1].append([float(lines[1+3*particleIdx+1]), #x value
+                                              float(lines[1+3*particleIdx+2])])   #y value
+
+    return measurementTimes, colorMeasurements, np.array(positionMeasurements)
+     
+def getColors(colorMeasurement): ##ToDo: Get right colors
+    c = []
+    for color in colorMeasurement:
+        if color==" red":
+            c.append('red')
+        elif color==" green":
+            c.append('green')
+        elif color==" greenPlus":
+            c.append('purple')
+        else:
+            assert False, "Invalid color value"
+    return c
+
+def animate_tracks(PATH):
+    #Get parameters
+    sim = experiment("test")
+    params = sim.read_parameter_file(PATH)
+    xLength =params["Length"] 
+    yLength =params["Length"]
+    R = 0.5 #WARNING: Radius of the cells since we set r0=1
+    transparency = 0.7 #transparency of circles 
+    #Get tracks
+    measurementTimes, colorMeasurements, positionMeasurements = readTracksFile(PATH+"_tracks.csv")
+    positionMeasurements = np.array(positionMeasurements)
+
+
+    #Set up figure 
+    fig,ax = plt.subplots()
+    plt.axis([0, xLength, 0, yLength])
+    plt.gca().set_aspect('equal', adjustable='box') #Makes both axis have some scaling while keeping the set limits
+
+    #Record the animation
+    camera = Camera(fig)
+    for frameIdx in range(len(measurementTimes)):
+        c = getColors(colorMeasurements[frameIdx])
+        for particleIdx in range(len(positionMeasurements[0])):
+            circle = plt.Circle((positionMeasurements[frameIdx][particleIdx][0],
+                                        positionMeasurements[frameIdx][particleIdx][1]), 
+                                        radius=R, linewidth=0, color = c[particleIdx], alpha = transparency)
+            plt.gca().add_artist(circle)
+        plt.gca().set_title("Time = %f"%measurementTimes[frameIdx])    
+        camera.snap()
+        #Delete all artists before next frame
+        for artist in plt.gca().lines + plt.gca().collections:
+            artist.remove()
+    animation = camera.animate()
+    animation.save(PATH+".mov")
+
+def final_snapshot(PATH):
+    #Get parameters
+    sim = experiment("test")
+    params = sim.read_parameter_file(PATH)
+    xLength =params["Length"] 
+    yLength =params["Length"]
+    R = 0.5 #WARNING: Radius of the cells since we set r0=1
+    transparency = 0.7 #transparency of circles
+
+    #Get tracks
+    measurementTimes, colorMeasurements, positionMeasurements = readTracksFile(PATH+"_tracks.csv")
+    positionMeasurements = np.array(positionMeasurements)
+
+
+    #Set up figure 
+    fig,ax = plt.subplots()
+    plt.axis([0, xLength, 0, yLength])
+    plt.gca().set_aspect('equal', adjustable='box') #Makes both axis have some scaling while keeping the set limits
+
+    frameIdx = -1 # last frame
+    c = getColors(colorMeasurements[frameIdx])
+    for particleIdx in range(len(positionMeasurements[0])):
+        circle = plt.Circle((positionMeasurements[frameIdx][particleIdx][0],
+                                    positionMeasurements[frameIdx][particleIdx][1]), 
+                                    radius=R, linewidth=0, color = c[particleIdx], alpha = transparency)
+        plt.gca().add_artist(circle)
+    plt.gca().set_title("Time = %f"%measurementTimes[frameIdx])    
+    plt.savefig(PATH+"_final_frame.png")
+
+
+
+
+# import numpy as np
+# # [num for num in d if num]
+# a = [1,2,3]
+# b = [a[idx] for idx in range(len(a)) if a[idx]>1]
+# print(b)
 
 # from numba import jit
 # @jit(nopython=True)
@@ -508,3 +840,60 @@ def plot_mixed_particle_radial_density(axes, experiments, t ,n_bins, n_reference
 #         reference_histogram = histogram
 
 #         return reference_histogram
+
+
+# def calculate_mixing_index(experiments, t, neighbourDistance = 2):
+#     """Calculates the mixing index of the two cell types. The cells from the first experiment are considered the reference cells, 
+#     whose neighbours we count.
+#     :experiments List containing two experiments with the tracks
+#     :t Time slice at which the mixing index function will be conputed
+#     :neighbourDistance How far cells can be apart and still count as
+#     """
+#     #Barricades
+#     assert(len(experiments)==2), "Expect exactly two experiments"
+#     assert(experiments[0].periodic == experiments[1].periodic), "Mixing periodic and non-periodic data"
+
+#     position_array = []
+#     for exp in experiments:
+#         points = []
+#         for track in exp.tracks:
+#             tIdx, = np.where(np.array(track)[:,0]==t)
+            
+#             if len(tIdx)>0: #Does the tracked particle exist at t?
+#                 tIdx = tIdx[0] #first occurence
+#                 points.append(track[tIdx][1:])
+#         position_array.append(points) #has spots from both experiments
+#     referencePoints = np.array(position_array[0])
+#     points = np.array(position_array[1])
+
+#     sameTypeCnt = np.zeros(len(referencePoints))        #Counts neighbours of the same type
+#     crossTypeCnt = np.zeros(len(referencePoints))       #Counts neighbours of the other type
+
+#     # print("# same type cells: %i, # other type cells: %i"%(len(referencePoints),len(points)))
+
+#     #Same-type neighbours
+#     for pIdx1 in range(len(referencePoints)):
+#         for pIdx2 in range(0,pIdx1):
+#             distance = experiments[0].distance(referencePoints[pIdx1]-referencePoints[pIdx2])
+#             if(distance < neighbourDistance):
+#                 sameTypeCnt[pIdx1] +=1
+#                 sameTypeCnt[pIdx2] +=1
+   
+#     #Cross-type neighbours
+#     for pIdx1 in range(len(referencePoints)):
+#         for pIdx2 in range(len(points)):
+#             distance = experiments[0].distance(referencePoints[pIdx1]-points[pIdx2])    
+#             if(distance < neighbourDistance):
+#                 crossTypeCnt[pIdx1] +=1
+
+#     #Discard 0 values and calculate mixing index for each particle
+#     neighbourCnt = sameTypeCnt+crossTypeCnt
+#     sameTypeCnt = np.array([sameTypeCnt[idx] for idx in range(len(neighbourCnt)) if neighbourCnt[idx]>0])
+#     crossTypeCnt = np.array([crossTypeCnt[idx] for idx in range(len(neighbourCnt)) if neighbourCnt[idx]>0])
+#     neighbourCnt = np.array([neighbourCnt[idx] for idx in range(len(neighbourCnt)) if neighbourCnt[idx]>0])
+#     mixing = (sameTypeCnt-crossTypeCnt)/(neighbourCnt)
+
+#     #Average
+#     mixingIdx = np.sum(mixing)/len(mixing)
+
+#     return mixingIdx
