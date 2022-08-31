@@ -26,19 +26,19 @@ else:
 for PATH in PATHS:
     green, red, params = load_simulation_data(PATH)
 
-    # #Plot both Tortuosities 
-    # min_length_tortuosity = 0.4
-    # delta_t = 0.2 #time interval for Dun method
-    # n_bins = 30
+    #Plot both Tortuosities 
+    min_length_tortuosity = 0.4
+    delta_t = 0.2 #time interval for Dun method
+    n_bins = 30
 
-    # #Dun method 
-    # fig, axes = plt.subplots(1,1)
-    # green.plot_tortuosity(axes, min_length_tortuosity, 'Green cells','g', n_bins=n_bins, 
-    #                                 method='Dun', delta_t=delta_t)
-    # red.plot_tortuosity(axes, min_length_tortuosity, 'Red cells', 'r',
-    #                                 n_bins=n_bins, method='Dun', delta_t=delta_t)
-    # axes.set_title(stats.ks_2samp(green.tortuosity,red.tortuosity)) 
-    # fig.savefig(PATH+'_tortuosity_combined_dun_t_%d_min_t_%d.png'%(delta_t, min_length_tortuosity), format='png',dpi=200)
+    #Dun method 
+    fig, axes = plt.subplots(1,1)
+    green.plot_tortuosity(axes, min_length_tortuosity, 'Green cells','g', n_bins=n_bins, 
+                                    method='Dun', delta_t=delta_t)
+    red.plot_tortuosity(axes, min_length_tortuosity, 'Red cells', 'r',
+                                    n_bins=n_bins, method='Dun', delta_t=delta_t)
+    axes.set_title(stats.ks_2samp(green.tortuosity,red.tortuosity)) 
+    fig.savefig(PATH+'_tortuosity_combined_dun_t_%d_min_t_%d.png'%(delta_t, min_length_tortuosity), format='png',dpi=200)
 
     # #Normal method
     # fig, axes = plt.subplots(1,1)

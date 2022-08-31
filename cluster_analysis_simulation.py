@@ -18,8 +18,7 @@ if(len(sys.argv)==2):
     PATHS = [sys.argv[1]]
 else:
     #Give parameter file manually
-    PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/longTime/areaFraction_0.5_Pe_120",
-            "/home/marius/PhD/CellMotility/agent_simulation/output/longTime/areaFraction_0.5_Pe_80"
+    PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/longTime/areaFraction_0.5_Pe_120"
             ]
 
 
