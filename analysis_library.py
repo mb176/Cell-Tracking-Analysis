@@ -12,10 +12,7 @@ from matplotlib.collections import PatchCollection
 from scipy import spatial, ndimage
 import copy
 import networkx as nx
-
-
-
-
+from tess import Container
 
 class experiment:
     """Holds tracks of the experiment, as well as any calculated observables.
@@ -44,6 +41,7 @@ class experiment:
         self.reference_histogram = np.array([None])
         self.color = [] #color[particle][step]['color']
         self.seed=seed
+        self._measurementTimes=None
         if seed==None:
             self.rng = np.random.default_rng()
         else:
@@ -103,10 +101,11 @@ class experiment:
                     self.color =  [[] for i in range(nParticles)]
                 t = float(lines[0])
                 for particleIdx in range(nParticles):
+                    self.color[particleIdx].append(lines[1+3*particleIdx])
                     self.tracks[particleIdx].append([t,
                                                     float(lines[1+3*particleIdx+1]), #x value
                                                     float(lines[1+3*particleIdx+2])])#y value
-                    self.color[particleIdx].append(lines[1+3*particleIdx])
+                    
                 lineCount +=1
         toc = time.perf_counter()
         self.periodic = True #This .csv file only exists for simulations, which are always periodic
@@ -143,7 +142,6 @@ class experiment:
         for track in self.tracks:
             tMax = max(tMax, track[-1][0])
         return tMax
-
 
     def distance(self, r):
         """Calculates the length of the tangent vector r taking periodicity into account
@@ -187,7 +185,6 @@ class experiment:
                 oldPosition = newPosition
 
         return MSD/len(self.tracks), time
-
 
     def TAMSD(self,delta_t,min_length):
         """Returns the average TAMSD as well as all individual TAMSDs for all tracks in the experiment
@@ -421,7 +418,13 @@ class experiment:
         
         return histogram, bins, points
 
-    
+    def get_measurementTimes(self):
+        if self._measurementTimes==None:
+            self._measurementTimes=[self.tracks[0][idx][0] for idx in range(len(self.tracks[0]))]
+        return self._measurementTimes
+
+    measurementTimes = property(get_measurementTimes)
+
 ##################################### End of experiment class ############################################
 
 def plot_mixed_particle_radial_density(axes, experiments, t ,n_bins, n_reference_points, no_plot=False, cutoff_percentage=0):
@@ -488,10 +491,10 @@ def plot_mixed_particle_radial_density(axes, experiments, t ,n_bins, n_reference
         axes.set_xlabel(r'Distance')
         axes.set_ylabel(r'Radial distribution function')
 
-def load_simulation_data(PATH):
+def load_simulation_data(PATH, trackIdx=""):
     #Load the data
     green = experiment(PATH)
-    green.read_csv(PATH+"_tracks.csv")
+    green.read_csv(f"{PATH}_tracks{trackIdx}.csv")
     params = green.read_parameter_file(PATH)
     nGreenParticles = int(params["nGreenParticles"])
     nRedParticles = int(params["nRedParticles"])
@@ -509,61 +512,113 @@ def load_simulation_data(PATH):
 
     return green, red, params
 
+def get_positions_and_particle_types(experiments, time):
+    points=[]
+    particleType=[]
+    for expIdx, exp in enumerate(experiments):
+            for pIdx, track in enumerate(exp.tracks):
+                    tIdx, = np.where(np.array(track)[:,0]==time)
 
-def calculate_mixing_index(experiments, t, neighbourDistance = 2):
-    """Calculates the mixing index of the two cell types. The cells from the first experiment are considered the reference cells, 
-    whose neighbours we count.
+                    if len(tIdx)>0: #Does the tracked particle exist at t?
+                            tIdx = tIdx[0] #first occurence
+                            particleType.append(expIdx)
+                            points.append(np.array(track[tIdx][1:]))
+    return points, particleType
+
+def get_distance_based_neighbourhood_graph(points, color, experiment, neighbourDistance):
+    # Creates graph whose connected components are the clusters, defined by two particles being within neighbourhood distance
+    #Initialise the graph
+    G =  nx.Graph()
+    #Add nodes
+    for nodeIdx in range(len(points)):
+        G.add_node(nodeIdx)
+    #Add edges
+    for pIdx1 in range(len(points)):
+        for pIdx2 in range(pIdx1):
+            dist = experiment.distance((points[pIdx1]-points[pIdx2]))
+            if(dist < neighbourDistance):
+                if(color[pIdx1]==color[pIdx2]):
+                    G.add_edge(pIdx1, pIdx2)
+                    G.add_edge(pIdx2, pIdx1)
+    return G
+
+def get_voronoi_based_neighbourhood_graph(points, color, experiment):
+    # Creates graph whose connected components are the clusters, defined by two particles being within neighbourhood distance
+    # Create Voronoi tesselation
+    embeddedCoordinates = [[point[0], point[1], 0.5] for point in points]
+    tess = Container(embeddedCoordinates, limits=(experiment.x_max, experiment.y_max,1), periodic=(True, True, False))    
+    #Initialise the graph
+    G =  nx.Graph()
+    #Add nodes
+    for nodeIdx in range(len(points)):
+        G.add_node(nodeIdx)
+    for idx, point in enumerate(tess):
+        for neighbourIdx in point.neighbors():
+            if(neighbourIdx>=0):
+                if(color[idx]==color[neighbourIdx]):
+                    G.add_edge(idx, neighbourIdx)
+    return G
+
+def calculate_mixing_index(experiments, t, neighbourDistance):
+    """Calculates the mixing index of the two cell types. 
     :experiments List containing two experiments with the tracks
     :t Time slice at which the mixing index function will be conputed
-    :neighbourDistance How far cells can be apart and still count as
+    :neighbourDistance How far cells can be apart and still count as 
+    neighbours. Giving None results in using Voronoi neighbourhood.
     """
     #Barricades
     assert(len(experiments)==2), "Expect exactly two experiments"
     assert(experiments[0].periodic == experiments[1].periodic), "Mixing periodic and non-periodic data"
 
-    position_array = []
-    for exp in experiments:
-        points = []
-        for track in exp.tracks:
-            tIdx, = np.where(np.array(track)[:,0]==t)
-            
-            if len(tIdx)>0: #Does the tracked particle exist at t?
-                tIdx = tIdx[0] #first occurence
-                points.append(track[tIdx][1:])
-        position_array.append(points) #has spots from both experiments
+    points, colorIdx = get_positions_and_particle_types(experiments, t)
     
-    greenPoints = np.array(position_array[0])
-    redPoints = np.array(position_array[1])
-    nGreen = len(greenPoints)
-    nRed = len(redPoints)
+    # Get colorblind neighbourhood graph
+    if neighbourDistance==None:
+        G = get_voronoi_based_neighbourhood_graph(points, np.zeros(len(points)), experiments[0])
+    else:
+        G = get_distance_based_neighbourhood_graph(points, np.zeros(len(points)), experiments[0], neighbourDistance)
 
-    sameTypeCnt = np.zeros(len(greenPoints)+len(redPoints))        #Counts neighbours of the same type
-    crossTypeCnt = np.zeros(len(greenPoints)+len(redPoints))       #Counts neighbours of the other type
+    # Find how many same-type and cross-type neighbours each particle has
+    sameTypeCnt = np.zeros(len(points))        
+    crossTypeCnt = np.zeros(len(points))       
 
-    # print("# same type cells: %i, # other type cells: %i"%(len(referencePoints),len(points)))
+    for idx1 in range(len(points)):
+        for idx2 in range(idx1):
+            if G.has_edge(idx1, idx2): #Are they neighbours
+                if colorIdx[idx1]==colorIdx[idx2]: #Same type?
+                    sameTypeCnt[idx1] += 1
+                    sameTypeCnt[idx2] += 1
+                elif colorIdx[idx1] != colorIdx[idx2]: # Cross type
+                    crossTypeCnt[idx1] += 1
+                    crossTypeCnt[idx2] += 1
 
-    #Same-type neighbours
-    for pIdx1 in range(nGreen):
-        for pIdx2 in range(0,pIdx1):
-            distance = experiments[0].distance(greenPoints[pIdx1]-greenPoints[pIdx2])
-            if(distance < neighbourDistance):
-                sameTypeCnt[pIdx1] +=1
-                sameTypeCnt[pIdx2] +=1
+    # greenPoints = np.array([points[idx] for idx in range(len(points)) if colorIdx[idx]==0])
+    # redPoints = np.array([points[idx] for idx in range(len(points)) if colorIdx[idx]==0])
+    # nGreen = len(greenPoints)
+    # nRed = len(redPoints)
+
+    # #Same-type neighbours
+    # for pIdx1 in range(nGreen):
+    #     for pIdx2 in range(0,pIdx1):
+    #         distance = experiments[0].distance(greenPoints[pIdx1]-greenPoints[pIdx2])
+    #         if(distance < neighbourDistance):
+    #             sameTypeCnt[pIdx1] +=1
+    #             sameTypeCnt[pIdx2] +=1
     
-    for pIdx1 in range(nRed):
-        for pIdx2 in range(0,pIdx1):
-            distance = experiments[0].distance(redPoints[pIdx1]-redPoints[pIdx2])
-            if(distance < neighbourDistance):
-                sameTypeCnt[nGreen+pIdx1] +=1
-                sameTypeCnt[nGreen+pIdx2] +=1
+    # for pIdx1 in range(nRed):
+    #     for pIdx2 in range(0,pIdx1):
+    #         distance = experiments[0].distance(redPoints[pIdx1]-redPoints[pIdx2])
+    #         if(distance < neighbourDistance):
+    #             sameTypeCnt[nGreen+pIdx1] +=1
+    #             sameTypeCnt[nGreen+pIdx2] +=1
    
-    #Cross-type neighbours
-    for pIdx1 in range(nGreen):
-        for pIdx2 in range(nRed):
-            distance = experiments[0].distance(greenPoints[pIdx1]-redPoints[pIdx2])    
-            if(distance < neighbourDistance):
-                crossTypeCnt[pIdx1] +=1
-                crossTypeCnt[nGreen+pIdx2] +=1
+    # #Cross-type neighbours
+    # for pIdx1 in range(nGreen):
+    #     for pIdx2 in range(nRed):
+    #         distance = experiments[0].distance(greenPoints[pIdx1]-redPoints[pIdx2])    
+    #         if(distance < neighbourDistance):
+    #             crossTypeCnt[pIdx1] +=1
+    #             crossTypeCnt[nGreen+pIdx2] +=1
 
     #Discard 0 values and calculate mixing index for each particle
     neighbourCnt = sameTypeCnt+crossTypeCnt
@@ -577,8 +632,9 @@ def calculate_mixing_index(experiments, t, neighbourDistance = 2):
 
     return mixingIdx, mixing
 
-def write_mixing_index(parameters, mixingIdx, FILE_PATH):
+def write_avr_mixing_index(parameters, mixingIdx, FILE_PATH):
     """Appends the mixing index with it's parameters to FILE_PATH (creates new file if none is there).
+    OUTDATED: Use write_mixing_index_to_file instead, it considers multiple realisations and time points.
     """
     file = open(FILE_PATH, "a") #append mode
     for name in parameters.keys():
@@ -587,9 +643,10 @@ def write_mixing_index(parameters, mixingIdx, FILE_PATH):
     file.close()
 
 
-def read_mixing_index(FILE_PATH):
+def read_avr_mixing_index(FILE_PATH):
     """Reads all mixing indices and parameter values at FILE_PATH. Assumes format from write_mixing_index
     and two parameter values.
+    OUTDATED: Use read_mixing_index_file instead, it works on different files that consider multiple realisations and time points.
     """
     names = []
     xValues = []
@@ -614,58 +671,38 @@ def read_mixing_index(FILE_PATH):
     return xValues, yValues, mixingIndices, names
 
 def max_cluster_size(experiments, t, neighbourDistance = 1.05):
-    #Find the relevant points
-    points = []
-    for exp in experiments:
-        for track in exp.tracks:
-            tIdx, = np.where(np.array(track)[:,0]==t)
-            
-            if len(tIdx)>0: #Does the tracked particle exist at t?
-                tIdx = tIdx[0] #first occurence
-                points.append(np.array(track[tIdx][1:]))
+    # Get points
+    points=[]
+    color=[]
+    for expIdx, exp in enumerate(experiments):
+            for pIdx, track in enumerate(exp.tracks):
+                    tIdx, = np.where(np.array(track)[:,0]==t)
 
-    #Initialise the graph
-    G =  nx.Graph()
-    #Add nodes
-    for nodeIdx in range(len(points)):
-        G.add_node(nodeIdx)
-    #Add edges
-    for pIdx1 in range(len(points)):
-        for pIdx2 in range(pIdx1):
-            distance = experiments[0].distance(points[pIdx1]-points[pIdx2])
-            if(distance < neighbourDistance):
-                G.add_edge(pIdx1, pIdx2)
-                G.add_edge(pIdx2, pIdx1)
+                    if len(tIdx)>0: #Does the tracked particle exist at t?
+                            tIdx = tIdx[0] #first occurence
+                            color.append(expIdx)
+                            points.append(np.array(track[tIdx][1:]))
+
+    G = get_distance_based_neighbourhood_graph(points, color, experiments[0], neighbourDistance)
     
     #get connected components
     connectedComponentsSize = [len(comp) for comp in nx.connected_components(G)]
     return max(connectedComponentsSize)
 
-
-
 def plot_cluster_histogram(axes, experiments, t, label ,color, neighbourDistance = 1.05, nBins=None):
-    #Find the relevant points
-    points = []
-    for exp in experiments:
-        for track in exp.tracks:
-            tIdx, = np.where(np.array(track)[:,0]==t)
-            
-            if len(tIdx)>0: #Does the tracked particle exist at t?
-                tIdx = tIdx[0] #first occurence
-                points.append(np.array(track[tIdx][1:]))
+    # Get points
+    points=[]
+    colorList=[]
+    for expIdx, exp in enumerate(experiments):
+            for pIdx, track in enumerate(exp.tracks):
+                    tIdx, = np.where(np.array(track)[:,0]==t)
 
-    #Initialise the graph
-    G =  nx.Graph()
-    #Add nodes
-    for nodeIdx in range(len(points)):
-        G.add_node(nodeIdx)
-    #Add edges
-    for pIdx1 in range(len(points)):
-        for pIdx2 in range(pIdx1):
-            distance = experiments[0].distance(points[pIdx1]-points[pIdx2])
-            if(distance < neighbourDistance):
-                G.add_edge(pIdx1, pIdx2)
-                G.add_edge(pIdx2, pIdx1)
+                    if len(tIdx)>0: #Does the tracked particle exist at t?
+                            tIdx = tIdx[0] #first occurence
+                            colorList.append(expIdx)
+                            points.append(np.array(track[tIdx][1:]))
+
+    G = get_distance_based_neighbourhood_graph(points, colorList, experiments[0], neighbourDistance)
     
     #get connected components
     connectedComponentsSize = [len(comp) for comp in nx.connected_components(G)]
@@ -688,7 +725,157 @@ def plot_cluster_histogram(axes, experiments, t, label ,color, neighbourDistance
 
     return connectedComponentsSize
     
+def write_clusters_to_file(output_file, graph, time, neighbourDistance, newRealisation=False):
+    """Saves the cluster distribution save in the graph by appending the output_file. 
+    Also records the time. If newRealisation=True it will create a line to indicate that.
+    """
+    with open(output_file, 'a') as f:
+            if newRealisation!=False:
+                f.write(f"## Realisation {newRealisation} (neighbour distance = {neighbourDistance})\n")
+            f.write('# t %f\n' % time)
+            
+            connectedComponentsSizes = [len(comp) for comp in nx.connected_components(graph)]
+            for size in range(1, max(connectedComponentsSizes)+1):
+                f.write("%d \n" % connectedComponentsSizes.count(size))
 
+def write_mixing_index_to_file(output_file, experiments, time, neighbourDistance, newRealisation=False):
+    """Saves the cluster distribution save in the graph by appending the output_file. 
+    Also records the time. If newRealisation=True it will create a line to indicate that.
+    """
+    with open(output_file, 'a') as f:
+            if newRealisation!=False:
+                f.write(f"## Realisation {newRealisation} (neighbour distance = {neighbourDistance})\n")
+            f.write('# t %f\n' % time)
+            
+            mixingIdx, mixing = calculate_mixing_index(experiments, time, neighbourDistance)
+
+            f.write(f"{mixingIdx}\n")
+
+def write_data_for_all_times(observable, output_file, green_data, red_data, neighbourDistance, fileIdx):
+    """Calculate the cluster distributions for the realisation described by green_data and red_data
+    and writes it to output_file. If neighbourDistance=None, it will find the clusters 
+    using the Voronoi-based neighbourhood measure, otherwise it will use the distance-based method.
+    "observable" can be either "mixingIdx" or "clustering": This determines which observable is calculated
+    and written into the file.
+    """
+    newRealisation=fileIdx
+    for time in green_data.measurementTimes:
+        # Calculate clustering
+        if observable == "clustering":
+            points, colorIdx = get_positions_and_particle_types([green_data,red_data], time)
+            if neighbourDistance==None:
+                G = get_voronoi_based_neighbourhood_graph(points, colorIdx, green_data)
+            else:
+                G = get_distance_based_neighbourhood_graph(points, colorIdx, green_data, neighbourDistance)
+            write_clusters_to_file(output_file, G, time, neighbourDistance, newRealisation=newRealisation)
+        # Calculate mixing index
+        elif observable == "mixingIdx":
+            write_mixing_index_to_file(output_file, [green_data, red_data], time, neighbourDistance, newRealisation=newRealisation)
+        else: 
+            raise ValueError("Unknown observable type; Can't write data.")
+
+        newRealisation=False
+
+def write_data_for_all_realisations(observable, parameterFile, outputFile, neighbourDistance):
+    """Goes through all tracks belonging to parameterFile and writes their cluster sizes into 
+    output for every time.
+    "observable" can be either "mixingIdx" or "clustering": This determines which observable is calculated
+    and written into the file.
+    """
+
+    outOfFiles = False
+    fileIdx=0
+   
+    while(not outOfFiles):
+        try: # See if file with this index exists
+            if fileIdx==0: # See if unnumbered track file exists
+                try:
+                    green, red, params = load_simulation_data(parameterFile)
+                except:
+                    fileIdx += 1
+            if fileIdx > 0: # numbered track file
+                green, red, params = load_simulation_data(parameterFile, trackIdx=f"_{fileIdx}")
+        except:
+            outOfFiles = True
+        if not outOfFiles:
+            write_data_for_all_times(observable, outputFile, green, red, neighbourDistance, fileIdx)
+            fileIdx += 1
+
+def read_clustering_file(inputFile):
+    """Reads out a file that contains cluster sizes for multiple time steps and realisations. 
+    Adds the numbers up over the different realisations and returns the accumulated numbers.
+    """
+    with open(inputFile, mode="r") as file:
+        csvFile = csv.reader(file, delimiter=" ")
+
+        # First go through the file and find the maximum cluster size:
+        maxClusterSize = 0
+        clusterSize = 0
+        timeIdx = 0
+        measurementTimes = []
+        
+        for line in csvFile:
+            if line[0] =="##": #Next realisation?
+                timeIdx = 0
+            elif line[0]=="#": #Next time step?
+                maxClusterSize = max(clusterSize,maxClusterSize)
+                clusterSize = 0
+                if len(measurementTimes) == timeIdx: # Never had this time step before?
+                    measurementTimes.append(float(line[2]))
+                assert(measurementTimes[timeIdx]==float(line[2]))  
+                timeIdx += 1  
+            else:
+                clusterSize+=1 
+
+        # Contains how often a cluster size occured: clusterSize[time][clusterSize]
+        clusterSizeFrequency = np.zeros((len(measurementTimes),maxClusterSize))       
+        
+        
+        # Second go through file again and record frequenciess
+        file.seek(0,0) #Reset file to beginning
+        csvFile = csv.reader(file, delimiter=" ")
+        for line in csvFile:
+            if line[0] =="##": #Next realisation?
+                timeIdx = -1 # Will be incremented once before used
+            elif line[0]=="#": #Next time step?
+                clusterSize = 0
+                timeIdx += 1
+            else:
+                clusterSizeFrequency[timeIdx][clusterSize]+=float(line[0])
+                clusterSize+=1 
+
+    return clusterSizeFrequency, measurementTimes
+
+def read_mixing_index_file(inputFile):
+    """Reads out a file that contains cluster sizes for multiple time steps and realisations. 
+    Averages the indeices over all realisations
+    """
+    nRealisations = 0 
+    measurementTimes = []
+    mixingIdx = []
+    with open(inputFile, mode="r") as file:
+        csvFile = csv.reader(file, delimiter=" ")
+        for line in csvFile:
+            if line[0] =="##": #Next realisation?
+                timeIdx = -1 #Will be incremented before first use
+                nRealisations += 1
+            elif line[0]=="#": #Next time step?
+                timeIdx += 1  
+                if len(measurementTimes) == timeIdx: # Never had this time step before?
+                    measurementTimes.append(float(line[2]))
+                    mixingIdx.append(0)
+            else: # This line contains a mixing index
+                assert(len(measurementTimes)==len(mixingIdx))
+                mixingIdx[timeIdx] += float(line[0])
+    
+    # Average 
+    mixingIdx = np.array(mixingIdx)/nRealisations
+    
+    return mixingIdx, measurementTimes
+                
+def plot_mixing_index_over_time(axes, inputFile, label = ""):
+    mixingIdx, measurementTimes = read_mixing_index_file(inputFile)
+    axes.plot(measurementTimes, mixingIdx, label=label)
 
 
 
@@ -722,7 +909,7 @@ def getColors(colorMeasurement): ##ToDo: Get right colors
         elif color==" green":
             c.append('green')
         elif color==" greenPlus":
-            c.append('purple')
+            c.append('green')
         else:
             assert False, "Invalid color value"
     return c
@@ -785,20 +972,14 @@ def final_snapshot(PATH):
     c = getColors(colorMeasurements[frameIdx])
     for particleIdx in range(len(positionMeasurements[0])):
         circle = plt.Circle((positionMeasurements[frameIdx][particleIdx][0],
-                                    positionMeasurements[frameIdx][particleIdx][1]), 
-                                    radius=R, linewidth=0, color = c[particleIdx], alpha = transparency)
+                            positionMeasurements[frameIdx][particleIdx][1]), 
+                            radius=R, linewidth=0, color = c[particleIdx], alpha = transparency)
         plt.gca().add_artist(circle)
     plt.gca().set_title("Time = %f"%measurementTimes[frameIdx])    
     plt.savefig(PATH+"_final_frame.png")
 
 
 
-
-# import numpy as np
-# # [num for num in d if num]
-# a = [1,2,3]
-# b = [a[idx] for idx in range(len(a)) if a[idx]>1]
-# print(b)
 
 # from numba import jit
 # @jit(nopython=True)
@@ -841,59 +1022,3 @@ def final_snapshot(PATH):
 
 #         return reference_histogram
 
-
-# def calculate_mixing_index(experiments, t, neighbourDistance = 2):
-#     """Calculates the mixing index of the two cell types. The cells from the first experiment are considered the reference cells, 
-#     whose neighbours we count.
-#     :experiments List containing two experiments with the tracks
-#     :t Time slice at which the mixing index function will be conputed
-#     :neighbourDistance How far cells can be apart and still count as
-#     """
-#     #Barricades
-#     assert(len(experiments)==2), "Expect exactly two experiments"
-#     assert(experiments[0].periodic == experiments[1].periodic), "Mixing periodic and non-periodic data"
-
-#     position_array = []
-#     for exp in experiments:
-#         points = []
-#         for track in exp.tracks:
-#             tIdx, = np.where(np.array(track)[:,0]==t)
-            
-#             if len(tIdx)>0: #Does the tracked particle exist at t?
-#                 tIdx = tIdx[0] #first occurence
-#                 points.append(track[tIdx][1:])
-#         position_array.append(points) #has spots from both experiments
-#     referencePoints = np.array(position_array[0])
-#     points = np.array(position_array[1])
-
-#     sameTypeCnt = np.zeros(len(referencePoints))        #Counts neighbours of the same type
-#     crossTypeCnt = np.zeros(len(referencePoints))       #Counts neighbours of the other type
-
-#     # print("# same type cells: %i, # other type cells: %i"%(len(referencePoints),len(points)))
-
-#     #Same-type neighbours
-#     for pIdx1 in range(len(referencePoints)):
-#         for pIdx2 in range(0,pIdx1):
-#             distance = experiments[0].distance(referencePoints[pIdx1]-referencePoints[pIdx2])
-#             if(distance < neighbourDistance):
-#                 sameTypeCnt[pIdx1] +=1
-#                 sameTypeCnt[pIdx2] +=1
-   
-#     #Cross-type neighbours
-#     for pIdx1 in range(len(referencePoints)):
-#         for pIdx2 in range(len(points)):
-#             distance = experiments[0].distance(referencePoints[pIdx1]-points[pIdx2])    
-#             if(distance < neighbourDistance):
-#                 crossTypeCnt[pIdx1] +=1
-
-#     #Discard 0 values and calculate mixing index for each particle
-#     neighbourCnt = sameTypeCnt+crossTypeCnt
-#     sameTypeCnt = np.array([sameTypeCnt[idx] for idx in range(len(neighbourCnt)) if neighbourCnt[idx]>0])
-#     crossTypeCnt = np.array([crossTypeCnt[idx] for idx in range(len(neighbourCnt)) if neighbourCnt[idx]>0])
-#     neighbourCnt = np.array([neighbourCnt[idx] for idx in range(len(neighbourCnt)) if neighbourCnt[idx]>0])
-#     mixing = (sameTypeCnt-crossTypeCnt)/(neighbourCnt)
-
-#     #Average
-#     mixingIdx = np.sum(mixing)/len(mixing)
-
-#     return mixingIdx

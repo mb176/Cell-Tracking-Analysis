@@ -26,7 +26,7 @@ if(len(sys.argv)==2):
     PATHS = [sys.argv[1]]
 else:
     #Give parameter file manually
-    PATHS = ["../agent_simulation/output/test/test_parameters"]
+    PATHS = ["../agent_simulation/output/test/new_test_parameters"]
     # PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/LowDensity/LowDensity",
     #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensity/HighDensity",
     #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensityControl/HighDensityControl"]
