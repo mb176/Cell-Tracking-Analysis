@@ -10,6 +10,10 @@ from analysis_library import *
 plt.style.use('seaborn-whitegrid')
 plt.close("all")
 
+"""
+This file checks wether the cluster-finding algorithms work as intended by producing 
+a plot where the particles are colored based on cluster.
+"""
 
 def plot_cluster(axes, experiments, time, radius, neighbourDistance):
         global colorIdx 
