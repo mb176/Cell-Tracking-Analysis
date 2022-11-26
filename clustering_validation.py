@@ -33,9 +33,9 @@ def plot_cluster(axes, experiments, time, radius, neighbourDistance):
 
         #Find cluster
         if neighbourDistance==None:
-                G = get_voronoi_based_cluster(points, color, experiments[0])
+                G = get_voronoi_based_neighbourhood_graph(points, color, experiments[0])
         else:
-                G = get_distance_based_cluster(points, color, experiments[0], neighbourDistance)
+                G = get_distance_based_neighbourhood_graph(points, color, experiments[0], neighbourDistance)
         
 
         xLength = green.x_max
@@ -47,7 +47,7 @@ def plot_cluster(axes, experiments, time, radius, neighbourDistance):
                         assert(color[idx]==color[list(comp)[0]]), "Clusters have to be unicolored!"
                         circle = plt.Circle((points[idx][0],
                                         points[idx][1]), 
-                                        radius=radius, linewidth = 1.0 ,alpha = TRANSPARENCY)
+                                        radius=radius, linewidth = 0.1 ,alpha = TRANSPARENCY)
                         circle.set_facecolor(f"C{colorIdx}")
                         if color[idx]==0:
                                 circle.set_edgecolor("red")   
@@ -64,34 +64,34 @@ def plot_cluster(axes, experiments, time, radius, neighbourDistance):
         axes.set_aspect('equal', adjustable='box') #Makes both axis have some scaling while keeping the set limits
 
 #Give parameter file manually
-PATH = "/home/marius/PhD/CellMotility/agent_simulation/validation/exampleSystem"
+PATH = "/home/marius/PhD/CellMotility/agent_simulation/new_output/turnAround_persistence/areaFraction_0.7_Pe_80"
        
 
 
 #Parameters
-NEIGHBOUR_DISTANCE = 1.04
+NEIGHBOUR_DISTANCE = 1.05
 TRANSPARENCY = 0.8
 R = 0.5
 
 
-green, red, params = load_simulation_data(PATH)
+green, red, params = load_simulation_data(PATH, trackIdx="_1")
 
 # Find last time step
 assert(green.find_t_max()==red.find_t_max()), "Tracks don't finish at the same time"
-t_final = green.find_t_max()
+t = 0 #green.find_t_max()
 
 
 # Red and green separate
 fig2, axes2 = plt.subplots(1,2)  
 colorIdx = 0
-plot_cluster(axes2[0], [green,red], t_final, R, NEIGHBOUR_DISTANCE)
+plot_cluster(axes2[0], [green,red], t, R, NEIGHBOUR_DISTANCE)
 axes2[0].set_title(f"Distance (d={NEIGHBOUR_DISTANCE})")
 
 colorIdx = 0
-plot_cluster(axes2[1], [green, red], t_final, R, None)
+plot_cluster(axes2[1], [green, red], t, R, None)
 axes2[1].set_title("Voronoi")
 
-fig2.savefig(PATH+'_clustering_validation_high_density.png', format='png',dpi=500)
+fig2.savefig(PATH+'_initial_cluster.png', format='png',dpi=500)
 
         # nx.draw_networkx(G)
 

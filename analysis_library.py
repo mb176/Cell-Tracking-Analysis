@@ -421,7 +421,9 @@ class experiment:
         return histogram, bins, points
 
     def get_measurementTimes(self):
-        if self._measurementTimes==None:
+        if len(self.tracks)==0:
+            return []
+        elif self._measurementTimes==None:
             self._measurementTimes=[self.tracks[0][idx][0] for idx in range(len(self.tracks[0]))]
         return self._measurementTimes
 
@@ -500,10 +502,6 @@ def load_simulation_data(PATH, trackIdx=""):
     params = green.read_parameter_file(PATH)
     nGreenParticles = int(params["nGreenParticles"])
     nRedParticles = int(params["nRedParticles"])
-
-
-    #Don't exclude any tracks
-    min_length = 0 #Tracks shorter than that are excluded
 
     #split up red and green particles (the simulation has green particles first and red particles second in its list)
     red = copy.deepcopy(green)
@@ -614,43 +612,6 @@ def calculate_mixing_index(experiments, t, neighbourDistance):
 
     return mixingIdx, mixingIdxGreen, mixingIdxRed
 
-def write_avr_mixing_index(parameters, mixingIdx, FILE_PATH):
-    """Appends the mixing index with it's parameters to FILE_PATH (creates new file if none is there).
-    OUTDATED: Use write_mixing_index_to_file instead, it considers multiple realisations and time points.
-    """
-    file = open(FILE_PATH, "a") #append mode
-    for name in parameters.keys():
-        file.write(name+", %f, "%parameters[name])
-    file.write("mixingIdx, %f \n"%mixingIdx)
-    file.close()
-
-def read_avr_mixing_index(FILE_PATH):
-    """Reads all mixing indices and parameter values at FILE_PATH. Assumes format from write_mixing_index
-    and two parameter values.
-    OUTDATED: Use read_mixing_index_file instead, it works on different files that consider multiple realisations and time points.
-    """
-    names = []
-    xValues = []
-    yValues = []
-    mixingIndices = []
-    namesEmpty = True
-    with open(FILE_PATH, 'r') as reader:
-        for line in reader.readlines():
-            idx1 = line.find(", ")
-            idx2 = line.find(", ",idx1+1)
-            idx3 = line.find(", ",idx2+1)
-            idx4 = line.find(", ",idx3+1)
-            idx5 = line.find(", ",idx4+1)
-            idx6 = line.find(" ",idx5+2)
-            if(namesEmpty):
-                names.append(line[:idx1])
-                names.append(line[idx2+2:idx3])
-                namesEmpty=False
-            xValues.append(float(line[idx1+2:idx2]))
-            yValues.append(float(line[idx3+2:idx4]))
-            mixingIndices.append(float(line[idx5+2:idx6]))
-    return xValues, yValues, mixingIndices, names
-
 def max_cluster_size(experiments, t, neighbourDistance = 1.05):
     # Get points
     points=[]
@@ -747,7 +708,7 @@ def write_data_for_all_times(observable, output_file, greenData, redData, neighb
     and written into the file.
     """
     newRealisation=fileIdx
-    for time in greenData.measurementTimes:
+    for time in redData.measurementTimes:
         # Calculate clustering
         if observable == "clustering":
             write_clusters_to_file(output_file, [greenData, redData], time, neighbourDistance, newRealisation=newRealisation)
@@ -768,22 +729,22 @@ def write_data_for_all_realisations(observable, parameterFile, outputFile, neigh
     """
 
     outOfFiles = False
-    fileIdx=0
+    trackIdx=0
    
     while(not outOfFiles):
         try: # See if file with this index exists
-            if fileIdx==0: # See if unnumbered track file exists
+            if trackIdx==0: # See if unnumbered track file exists
                 try:
                     green, red, params = load_simulation_data(parameterFile)
                 except:
-                    fileIdx += 1
-            if fileIdx > 0: # numbered track file
-                green, red, params = load_simulation_data(parameterFile, trackIdx=f"_{fileIdx}")
+                    trackIdx += 1
+            if trackIdx > 0: # numbered track file
+                green, red, params = load_simulation_data(parameterFile, trackIdx=f"_{trackIdx}")
         except:
             outOfFiles = True
         if not outOfFiles:
-            write_data_for_all_times(observable, outputFile, green, red, neighbourDistance, fileIdx)
-            fileIdx += 1
+            write_data_for_all_times(observable, outputFile, green, red, neighbourDistance, trackIdx)
+            trackIdx += 1
 
 def read_clustering_file(inputFile):
     """Reads out a file that contains cluster sizes for multiple time steps and realisations. 
@@ -856,10 +817,6 @@ def read_mixing_index_file(inputFile):
     
     return mixingIdx, mixingIdxGreen, mixingIdxRed, measurementTimes
                 
-
-
-########################################### Animation ########################################################
-
 def readTracksFile(filename):
     """This is similar to read_csv in analysis library, but has a different output structure and is
     only used here"""
@@ -880,7 +837,7 @@ def readTracksFile(filename):
 
     return measurementTimes, colorMeasurements, np.array(positionMeasurements)
      
-def getColors(colorMeasurement): ##ToDo: Get right colors
+def getColors(colorMeasurement): 
     c = []
     for color in colorMeasurement:
         if color==" red":
@@ -964,7 +921,7 @@ def final_snapshot(PATH):
                             radius=R, linewidth=0, color = c[particleIdx], alpha = transparency)
         plt.gca().add_artist(circle)
     plt.gca().set_title("Time = %f"%measurementTimes[frameIdx])    
-    plt.savefig(PATH+"_final_frame.png")
+    plt.savefig(PATH+"_final_frame.png",dpi=500)
 
 
 

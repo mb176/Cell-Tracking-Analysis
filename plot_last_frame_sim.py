@@ -30,7 +30,7 @@ if(len(sys.argv)==2):
     PATHS = [sys.argv[1]]
 else:
     #Give parameter file manually
-    PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/new_output/test/test_file_iteration/new_test_parameters"]
+    PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output_delayed_persistence/MIPS/persistence_3/areaFraction_0.4_Pe_160"]
     # PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/LowDensity/LowDensity",
     #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensity/HighDensity",
     #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensityControl/HighDensityControl"]
