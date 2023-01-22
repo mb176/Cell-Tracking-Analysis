@@ -30,12 +30,16 @@ if(len(sys.argv)==2):
     PATHS = [sys.argv[1]]
 else:
     #Give parameter file manually
-    PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output_delayed_persistence/MIPS/persistence_3/areaFraction_0.4_Pe_160"]
+    PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output_delayed_CIL/test/test"]
     # PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/LowDensity/LowDensity",
     #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensity/HighDensity",
     #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensityControl/HighDensityControl"]
 
 for PATH in PATHS:
-    final_snapshot(PATH)
+    if(exists(PATH+f"_velocities_tracks_1.csv")):
+        final_snapshot(PATH, velocityArrows=False)
+    else:
+        final_snapshot(PATH, velocityArrows=False)
+    
     
 

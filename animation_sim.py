@@ -30,14 +30,17 @@ if(len(sys.argv)==2):
     PATHS = [sys.argv[1]]
 else:
     #Give parameter file manually
-    PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output_new_CIL/test/turnAround"]
+    PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output_23_01/diffCIL_persistence/movies/A_0.7_Pe_200"]
     # PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/LowDensity/LowDensity",
     #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensity/HighDensity",
     #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensityControl/HighDensityControl"]
 
 
 for PATH in PATHS:
-    animate_tracks(PATH)
-    #final_snapshot(PATH)
+    if(exists(PATH+f"_velocities_tracks_1.csv")):
+        animate_tracks(PATH, velocityArrows=True)
+    else:
+        animate_tracks(PATH, velocityArrows=False)
+ 
     
 

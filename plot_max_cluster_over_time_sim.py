@@ -45,7 +45,8 @@ def get_avrMaxClusterSize(measurementTimes, clusterSizes, nParticles):
 if(len(sys.argv)==2): #Parameter file given externally:
     PATH = sys.argv[1]
 else: #Give parameter file manually
-    PATH = "/home/marius/PhD/CellMotility/agent_simulation/output_new_CIL/adhesion_persistence_15_1/tau_0.05/areaFraction_0.3_Pe_40"
+    PATH = "/home/marius/PhD/CellMotility/agent_simulation/output_new_parameters/turnAround_t_100/areaFraction_0.4_Pe_20"
+
 
 # Folder containing the PATH
 FOLDER = PATH[0:PATH.rindex("/")+1] # rindex finds last occurence of a character 
@@ -63,14 +64,14 @@ styleIdx = 0
 colorIdx = 0
 A_dic = {}
 Pe_dic = {}
-NAME = "max_cluster"
+NAME = "max_cluster_log"
 
 # Allowed parameters: This way only certain simulations enter the graph
-restrict_parameters = False # If False A_allowed is ignored
-A_allowed = [0.4, 0.5, 0.6]
+restrict_parameters = True # If False A_allowed is ignored
+A_allowed = [0.3, 0.5]
 
 
-for fileName in os.listdir(FOLDER): #Iterate over all files in the folder
+for fileName in sorted(os.listdir(FOLDER)): #Iterate over all files in the folder
     # Find all parameter files
     paramFile = None
     if fileName[-13:]=="_tracks_1.csv":
@@ -125,14 +126,14 @@ for fileName in os.listdir(FOLDER): #Iterate over all files in the folder
 
 # Label and save the plots
 ax_all.legend(); ax_all.set_xlabel("Time"); ax_all.set_ylabel("Avr max cluster size"); ax_all.set_title("All clusters")
-# ax_all.set_xscale("log")
-# ax_all.set_yscale("log")
+ax_all.set_xscale("log")
+ax_all.set_yscale("log")
 ax_green.legend(); ax_green.set_xlabel("Time"); ax_green.set_ylabel("Max cluster size"); ax_green.set_title("Green clusters")
-# ax_green.set_xscale("log")
-# ax_green.set_yscale("log")
+ax_green.set_xscale("log")
+ax_green.set_yscale("log")
 ax_red.legend(); ax_red.set_xlabel("Time"); ax_red.set_ylabel("Max cluster size"); ax_red.set_title("Red clusters")
-# ax_red.set_xscale("log")
-# ax_red.set_yscale("log")
+ax_red.set_xscale("log")
+ax_red.set_yscale("log")
 
 # Make room for the legend on the left
 ax_all.set_xlim(-0.5*measurementTimes[-1], measurementTimes[-1]) 

@@ -23,9 +23,10 @@ realisations of the same simulation).
 if(len(sys.argv)==2): #Parameter file given externally:
     PATH = sys.argv[1]
 else: #Give parameter file manually
-    PATH = "/home/marius/PhD/CellMotility/agent_simulation/output_delayed_persistence/persistence_9_1/tau_0.02/areaFraction_0.7_Pe_80"
+    PATH = "/home/marius/PhD/CellMotility/agent_simulation/output_delayed_CIL/randomAngle/A_0.5_Pe_160"
     
-    # Folder containing the PATH
+
+# Folder containing the PATH
 FOLDER = PATH[0:PATH.rindex("/")+1] # rindex finds last occurence of a character 
 
 
@@ -39,7 +40,7 @@ Pe_dic = {}
 
 # Allowed parameters: This way only certain simulations enter the graph
 restrict_parameters = False # If False A_allowed is ignored
-A_allowed = [0.1, 0.15, 0.2, 0.3, 0.4]
+A_allowed = [0.3, 0.5, 0.7]
 NAME = "mixing_over_time"
 
 
@@ -64,9 +65,10 @@ for fileName in sorted(os.listdir(FOLDER)): #Iterate over all files in the folde
         paramFile = FOLDER+fileName[:-11]
 
 
-    if paramFile is not None:
+    if paramFile is not None and paramFile[-10:]!="velocities":
         INPUT_FILE = paramFile+"_mixing.csv"
         # Find parameters
+        print(paramFile[-10:])
         exp = experiment(paramFile)
         params = exp.read_parameter_file(paramFile)
         A = params["areaFraction"]

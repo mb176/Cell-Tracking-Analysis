@@ -14,6 +14,7 @@ from matplotlib.collections import PatchCollection
 from scipy import spatial, ndimage
 import copy
 import networkx as nx
+from os.path import exists  
 from tess import Container
 
 class experiment:
@@ -37,6 +38,7 @@ class experiment:
         self.name = name
         self.timeStep = 1 #time passed between each step of the track
         self.tracks = [] #tracks[particle][step][t,x,y]
+        self.velocities = [] #velocities[particle][step][theta] Stores the angle of the velocity vector if this is provided by the simulation
         self.x_max = 0 
         self.y_max = 0
         self.max_distance = 0 #Maximum distance between particles based on x_max, y_max
@@ -96,22 +98,39 @@ class experiment:
         with open(fileName, mode="r") as file:
             csvFile = csv.reader(file)
             lineCount = 0
-            for lines in csvFile: #Go through every timestep
-                nParticles = int((len(lines)-1)/3)
+            for line in csvFile: #Go through every timestep
+                nParticles = int((len(line)-1)/3)
                 if (lineCount==0): #Initialise the tracks
                     self.tracks = [[] for i in range(nParticles)]
                     self.color =  [[] for i in range(nParticles)]
-                t = float(lines[0])
+                t = float(line[0])
                 for particleIdx in range(nParticles):
-                    self.color[particleIdx].append(lines[1+3*particleIdx])
+                    self.color[particleIdx].append(line[1+3*particleIdx])
                     self.tracks[particleIdx].append([t,
-                                                    float(lines[1+3*particleIdx+1]), #x value
-                                                    float(lines[1+3*particleIdx+2])])#y value
+                                                    float(line[1+3*particleIdx+1]), #x value
+                                                    float(line[1+3*particleIdx+2])])#y value
                     
                 lineCount +=1
         toc = time.perf_counter()
         self.periodic = True #This .csv file only exists for simulations, which are always periodic
         print(f"Read .csv track file in {toc - tic:f} seconds")
+    
+    def read_velocity_csv(self,filename):
+        """Reads velocity-orientation data produced by a simulation from a .csv file named 
+        fileName and saves the data in experiment.
+        """
+        with open(filename, mode="r") as file:
+            csvFile = csv.reader(file)
+            lineCount = 0
+            for line in csvFile:
+                nParticles = int((len(line)-1))
+                if (lineCount==0): #Initialise the tracks
+                    self.velocities = [[] for i in range(nParticles)]
+                t = float(line[0])
+                for particleIdx in range(nParticles):
+                    self.velocities[particleIdx].append(float(line[1+particleIdx]))
+                lineCount +=1
+        return self.velocities
 
     def read_parameter_file(self,file):
         params = {}
@@ -135,34 +154,53 @@ class experiment:
 
     def set_max_distance(self):
         if(self.periodic==False):
-            self.max_distance = np.sqrt(self.x_max**2+self.y_max**2)*1.01 #Some wiggle room in case a point is exactly at max distane
+            self.max_distance = np.sqrt(self.x_max**2+self.y_max**2) #Some wiggle room in case a point is exactly at max distane
         elif(self.periodic==True):
-            self.max_distance = np.sqrt((self.x_max**2+self.y_max**2)/4)*1.01
+            self.max_distance = np.sqrt((self.x_max**2+self.y_max**2)/4)
+        return self.max_distance
 
     def find_t_max(self):
         tMax = 0
-        for track in self.tracks:
+        for trackIdx, track in enumerate(self.tracks):
             tMax = max(tMax, track[-1][0])
         return tMax
 
-    def distance(self, r):
-        """Calculates the length of the tangent vector r taking periodicity into account
+    def distance(self, r, angle = False):
+        """Calculates the length of the tangent vector r taking periodicity into account. Can optionally also provide the angle 
+        relative to the x axis
         """
-        if self.periodic == False:
-            return np.linalg.norm(np.array(r))
-        elif self.periodic == True:
-            r[0] = min(abs(r[0]),abs(abs(r[0])-self.x_max)) #abs(r[0]) % self.x_max
-            r[1] = min(abs(r[1]),abs(abs(r[1])-self.y_max)) #abs(r[1]) % self.y_max
-            return np.linalg.norm(np.array(r))
+        if self.periodic == True:
+            while(r[0]>=0.5 * self.x_max): r[0] -= self.x_max
+            while(r[0]<-0.5 * self.x_max): r[0] += self.x_max 
+            while(r[1]>=0.5 * self.y_max): r[1] -= self.y_max
+            while(r[1]<-0.5 * self.y_max): r[1] += self.y_max 
+            # r[0] = min(abs(r[0]),abs(abs(r[0])-self.x_max)) #abs(r[0]) % self.x_max
+            # r[1] = min(abs(r[1]),abs(abs(r[1])-self.y_max)) #abs(r[1]) % self.y_max
+
+        if(angle == True):
+            if r[0]>0:
+                phi = np.arctan(r[1]/r[0])
+            # elif r[0]==0:
+            #     phi
+            else:
+                phi= np.arctan(r[1]/r[0]) + np.pi
+            # while(phi > np.pi): phi -=2*np.pi
+            # while(phi < -np.pi): phi +=2*np.pi
+            if(phi < 0): phi+= 2*np.pi # all angles in [0,2 pi]
+            
+            return np.linalg.norm(np.array(r)) , phi 
         else:
-            assert(False), "Invalid value for periodicity"  
+            return np.linalg.norm(np.array(r)) 
 
     def MSD(self):
         """Calculates the mean squared displacement. Accounts for periodic boundary conditions in the simulation.
         Assumes displacement between steps doesn't exceed half the box.
         """
-        MSD = np.zeros(len(self.tracks[0]))
-        time = np.zeros(len(self.tracks[0]))
+        
+        tMax = self.find_t_max()
+        MSD = np.zeros(tMax+1)
+        time = np.linspace(0,tMax,tMax+1)
+        nTracks = np.zeros(tMax+1) # Number of tracks that have contributed to MSD for a specific time (interval)
         for track in self.tracks:
             origin = np.array(track[0][1:]) #keeps track of where particle started
             offset = np.zeros(2) #keeps track of how many times the periodic boundary was crossed
@@ -170,6 +208,7 @@ class experiment:
             for tIdx in range(1,len(track)):
                 newPosition = np.array(track[tIdx][1:])
                 displacement = newPosition-oldPosition
+                nTracks[tIdx] += 1
                 #check if particle passed boundary
                 if(displacement[0]>self.x_max/2): #crossed lower x boundary
                     offset[0]-= self.x_max
@@ -182,11 +221,11 @@ class experiment:
 
                 #Update MSD
                 MSD[tIdx] += np.linalg.norm(newPosition+offset-origin)**2
-                time[tIdx] = track[tIdx][0]
 
                 oldPosition = newPosition
 
-        return MSD/len(self.tracks), time
+        MSD[1:] = MSD[1:]/nTracks[1:]
+        return MSD, time
 
     def TAMSD(self,delta_t,min_length):
         """Returns the average TAMSD as well as all individual TAMSDs for all tracks in the experiment
@@ -205,7 +244,7 @@ class experiment:
                 nTracks += 1
                 #Calculate TAMSD for the track
                 for idx in range(track_duration-delta_t):
-                    distance = track[idx][1:]-track[idx+delta_t][1:]
+                    distance = self.distance(np.array(track[idx][1:])-np.array(track[idx+delta_t][1:]))
                     total += np.dot(distance,distance)
                 TAMSD= total/(track_duration-delta_t)
                 individual_TAMSD.append(TAMSD)
@@ -215,7 +254,7 @@ class experiment:
 
         return average, individual_TAMSD
 
-    def plot_TAMSD(self, tmax, min_length,axes):
+    def plot_TAMSD(self, tmax, min_length,axes,label,color,reference=True):
         """Calculates the TAMSD as a function of the time intervall delta_t for all tracks 
         in the experiment that are longer than min_length.
         :tmax sets the biggest delta_t that is considered (in timesteps, not minutes). Has to 
@@ -232,25 +271,25 @@ class experiment:
 
         #Plot individual tracks
         individual_TAMSD = np.transpose(np.array(individual_TAMSD))
-        for vec in individual_TAMSD:
-            axes.loglog(delta_t_vec,vec,linewidth=0.1)    
+        # for vec in individual_TAMSD:
+        #     axes.loglog(delta_t_vec,vec,linewidth=0.1)    
         axes.set_xlabel(r"$\Delta$ t")
         axes.set_ylabel("TAMSD")
-        axes.loglog(delta_t_vec,avr_TAMSD,label='Average', linewidth=2)
+        axes.loglog(delta_t_vec,avr_TAMSD,label=label,color=color, linewidth=2)
 
-        #Plot dashed lines for comparison
         
-        #Ballistic motion, starting on the left
-        x0 = avr_TAMSD[0]
-        x1 = avr_TAMSD[0]*(tmax)**2 
-        axes.loglog([delta_t_vec[0],delta_t_vec[-1]],[x0,x1],color='black', 
-                    linestyle='dashed', label='Ballistic motion')
+        if reference: #Plot dashed lines for comparison
+            #Ballistic motion, starting on the left
+            x0 = avr_TAMSD[0]
+            x1 = avr_TAMSD[0]*(tmax)**2 
+            axes.loglog([delta_t_vec[0],delta_t_vec[-1]],[x0,x1],color='black', 
+                        linestyle='dashed', label='Ballistic motion')
 
-        #Normal diffusive motion, 
-        y0 = avr_TAMSD[0]
-        y1 = avr_TAMSD[0]*(tmax) 
-        axes.loglog([delta_t_vec[0],delta_t_vec[-1]],[y0,y1],color='blue', 
-                    linestyle='dashed', label='Diffusive motion')
+            #Normal diffusive motion, 
+            y0 = avr_TAMSD[0]
+            y1 = avr_TAMSD[0]*(tmax) 
+            axes.loglog([delta_t_vec[0],delta_t_vec[-1]],[y0,y1],color='blue', 
+                        linestyle='dashed', label='Diffusive motion')
 
     def calculate_tortuosity_dun_method(self, delta_t, min_length):
         """calculates distance travelled and 
@@ -332,32 +371,48 @@ class experiment:
         axes.set_ylabel(r'Probability Density')
         axes.legend()
 
-    def generate_reference_histogram(self, n_particles, n_bins):
+    def generate_reference_histogram(self, n_particles, n_bins, nAngleBins=None):
         '''Generates a radial density histogram for uniform distributed particles in a box of 
         size self.x_max self.y_max. This serves as a normalisation for the measured density.
         :n_particles Number of particles that are generated
         :n_bins Number of bins to be used. The bins are evenly distributed between 0 and max_distance
+        :nAngleBins If set it will also calculate the the angles between the vectors connecting two points with the 
+            x axis and bin them in nAngleBin bins
         '''
-        #Check if we already created the distogram with this number of particles
-        if (all(self.reference_histogram==None ) or len(self.reference_histogram)!= n_bins):
-            #Generate points
-            x_values = self.rng.random((n_particles))*self.x_max
-            y_values = self.rng.random((n_particles))*self.y_max
-            points = np.transpose(np.array([x_values,y_values]))
+        
+        #Generate points
+        x_values = self.rng.random((n_particles))*self.x_max
+        y_values = self.rng.random((n_particles))*self.y_max
+        points = np.transpose(np.array([x_values,y_values]))
 
-            if(self.periodic==False): #Faster Computation for non-periodic data
-                distances = spatial.distance.pdist(points)
-            elif(self.periodic==True): #Manual compuatation for periodic data
-                distances = np.zeros(int(n_particles*(n_particles-1)/2))
-                cnt = 0
-                for i in range(n_particles):
-                    for j in range(i+1,n_particles):
-                        distances[cnt]=self.distance(points[i]-points[j])
-                        cnt+=1
+        if nAngleBins!=None:
+            angleHistogram = np.zeros((n_bins, nAngleBins))
+            angleBinWidth = 2*np.pi/nAngleBins
+            distanceBinWidth = self.set_max_distance()/n_bins
 
+        # if(self.periodic==False): #Faster Computation for non-periodic data
+        #     distances = spatial.distance.pdist(points)
+        # elif(self.periodic==True): #Manual compuatation for periodic data
+        distances = np.zeros(int(n_particles*(n_particles-1)/2))
+        cnt = 0
+        for i in range(n_particles):
+            for j in range(i+1,n_particles):
+                if nAngleBins==None:
+                    distances[cnt]=self.distance(points[i]-points[j]) # distance() takes care of boundary conditions
+                    cnt+=1
+                else:
+                    distance, angle=self.distance(points[i]-points[j], angle=True)
+                    angleHistogram[int(distance/distanceBinWidth),
+                                    int(angle/angleBinWidth)]+=1
+
+
+            
+        if nAngleBins == None:
             self.reference_histogram = ndimage.histogram(distances, 0, self.max_distance,n_bins)
-
-        return self.reference_histogram
+            return self.reference_histogram
+        else:
+            self.reference_histogram = angleHistogram
+            return angleHistogram    
 
     def plot_radial_density(self,axes, t ,n_bins, label, color, no_plot=False, cutoff_percentange = 10, 
                             n_reference_points = 10000):
@@ -850,7 +905,7 @@ def getColors(colorMeasurement):
             assert False, "Invalid color value"
     return c
 
-def animate_tracks(PATH):
+def animate_tracks(PATH, velocityArrows=False):
     #Get parameters
     sim = experiment("test")
     params = sim.read_parameter_file(PATH)
@@ -868,6 +923,13 @@ def animate_tracks(PATH):
 
     positionMeasurements = np.array(positionMeasurements)
 
+    if velocityArrows==True:
+        #Assert that file exists
+        try: #Single realisation
+            velocityMeasurements = sim.read_velocity_csv(PATH+"_velocities_tracks.csv")
+        except: # Multiple realisations
+            velocityMeasurements = sim.read_velocity_csv(PATH+"_velocities_tracks_1.csv")
+
 
     #Set up figure 
     fig,ax = plt.subplots()
@@ -883,6 +945,12 @@ def animate_tracks(PATH):
                                         positionMeasurements[frameIdx][particleIdx][1]), 
                                         radius=R, linewidth=0, color = c[particleIdx], alpha = transparency)
             plt.gca().add_artist(circle)
+            if velocityArrows==True:
+                plt.arrow(positionMeasurements[frameIdx][particleIdx][0],
+                        positionMeasurements[frameIdx][particleIdx][1],
+                        0.5*np.cos(velocityMeasurements[particleIdx][frameIdx]),
+                        0.5*np.sin(velocityMeasurements[particleIdx][frameIdx])
+                        )
         plt.gca().set_title("Time = %f"%measurementTimes[frameIdx])    
         camera.snap()
         #Delete all artists before next frame
@@ -891,7 +959,7 @@ def animate_tracks(PATH):
     animation = camera.animate()
     animation.save(PATH+".mov")
 
-def final_snapshot(PATH):
+def final_snapshot(PATH, velocityArrows=False):
     #Get parameters
     sim = experiment("test")
     params = sim.read_parameter_file(PATH)
@@ -907,6 +975,12 @@ def final_snapshot(PATH):
         measurementTimes, colorMeasurements, positionMeasurements = readTracksFile(PATH+"_tracks_1.csv")
     positionMeasurements = np.array(positionMeasurements)
 
+    if velocityArrows==True:
+        #Assert that file exists
+        try: #Single realisation
+            velocityMeasurements = sim.read_velocity_csv(PATH+"_velocities_tracks.csv")
+        except: # Multiple realisations
+            velocityMeasurements = sim.read_velocity_csv(PATH+"_velocities_tracks_1.csv")
 
     #Set up figure 
     fig,ax = plt.subplots()
@@ -920,10 +994,16 @@ def final_snapshot(PATH):
                             positionMeasurements[frameIdx][particleIdx][1]), 
                             radius=R, linewidth=0, color = c[particleIdx], alpha = transparency)
         plt.gca().add_artist(circle)
+        if velocityArrows==True:
+            plt.arrow(positionMeasurements[frameIdx][particleIdx][0],
+                        positionMeasurements[frameIdx][particleIdx][1],
+                        0.5*np.cos(velocityMeasurements[particleIdx][frameIdx]),
+                        0.5*np.sin(velocityMeasurements[particleIdx][frameIdx])
+                        )
+
+            
     plt.gca().set_title("Time = %f"%measurementTimes[frameIdx])    
     plt.savefig(PATH+"_final_frame.png",dpi=500)
-
-
 
 
 # from numba import jit

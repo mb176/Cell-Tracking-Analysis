@@ -24,7 +24,7 @@ if(len(sys.argv)==2): #Parameter file given externally:
     paramFile = sys.argv[1]
 
 else: #Give parameter file manually, loop over all experiments in the folder
-    paramFile = "/home/marius/PhD/CellMotility/agent_simulation/output_new_CIL/test/test"
+    paramFile = "/home/marius/PhD/CellMotility/agent_simulation/output_delayed_persistence/fixedPersistence/areaFraction_0.6_Pe_80"
 
 OUTPUT_FILE = paramFile+"_mixing.csv"
 try:
