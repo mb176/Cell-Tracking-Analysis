@@ -15,13 +15,13 @@ Calculate the cluster sizes and plots a histogram for a given experiment.
 SOURCE_FOLDER="/home/marius/PhD/CellMotility/tracking_ignacio_2022"
 TARGET_FOLDER="/home/marius/PhD/CellMotility/Plots/Plots_Ignacio2022"
 
-# name_pairs = [['/HighDensitycontrolEphB2/High Density control EphB2_green frames 0 to 211_Tracks',
-#         '/HighDensitycontrolEphB2/High Density control EphB2_red frames 0 to 211_Tracks'],
-#         ['/High Density sorting EphB2/High Density sorting EphB2_green frames 0 to 211_Tracks',
-#         '/High Density sorting EphB2/High Density sorting ephrinB1_red 0 to 211_Tracks'],
-#         ['/Low Density sorting ephrinB1/Low Density sorting EphB2_green frames 11 to 211_Tracks',
-#         '/Low Density sorting ephrinB1/Low Density sorting ephrinB1_red frames 11 to 211_Tracks']
-#         ]
+name_pairs = [['/HighDensitycontrolEphB2/High Density control EphB2_green frames 0 to 211_Tracks',
+        '/HighDensitycontrolEphB2/High Density control EphB2_red frames 0 to 211_Tracks'],
+        ['/High Density sorting EphB2/High Density sorting EphB2_green frames 0 to 211_Tracks',
+        '/High Density sorting EphB2/High Density sorting ephrinB1_red 0 to 211_Tracks'],
+        ['/Low Density sorting ephrinB1/Low Density sorting EphB2_green frames 11 to 211_Tracks',
+        '/Low Density sorting ephrinB1/Low Density sorting ephrinB1_red frames 11 to 211_Tracks']
+        ]
 
 name_pairs = [['/Low Density sorting ephrinB1/Low Density sorting EphB2_green frames 11 to 211_Tracks',
                 '/Low Density sorting ephrinB1/Low Density sorting ephrinB1_red frames 11 to 211_Tracks']]

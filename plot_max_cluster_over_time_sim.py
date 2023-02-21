@@ -45,7 +45,7 @@ def get_avrMaxClusterSize(measurementTimes, clusterSizes, nParticles):
 if(len(sys.argv)==2): #Parameter file given externally:
     PATH = sys.argv[1]
 else: #Give parameter file manually
-    PATH = "/home/marius/PhD/CellMotility/agent_simulation/output_new_parameters/turnAround_t_100/areaFraction_0.4_Pe_20"
+    PATH = "/home/marius/PhD/CellMotility/agent_simulation/output_23_02/persistenc_only_green_dCIL/A_0.7_Pe_40"
 
 
 # Folder containing the PATH
@@ -80,7 +80,7 @@ for fileName in sorted(os.listdir(FOLDER)): #Iterate over all files in the folde
         paramFile = FOLDER+fileName[:-11]
 
 
-    if paramFile != None:
+    if paramFile is not None and paramFile[-10:]!="velocities":
         INPUT_FILE = paramFile+"_clustering.csv"
         # Find parameters
         exp = experiment(paramFile)
@@ -91,7 +91,7 @@ for fileName in sorted(os.listdir(FOLDER)): #Iterate over all files in the folde
         nGreenParticles = params["nGreenParticles"]
         nRedParticles = params["nRedParticles"]
 
-        if (A in A_allowed and Pe < 1000) or restrict_parameters==False:
+        if (A in A_allowed and Pe < 200) or restrict_parameters==False:
             # Update linestyle and line color
             if A not in A_dic:
                 A_dic[A]=lineStyles[styleIdx]

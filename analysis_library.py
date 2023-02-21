@@ -16,6 +16,7 @@ import copy
 import networkx as nx
 from os.path import exists  
 from tess import Container
+import math
 
 class experiment:
     """Holds tracks of the experiment, as well as any calculated observables.
@@ -165,6 +166,21 @@ class experiment:
             tMax = max(tMax, track[-1][0])
         return tMax
 
+    def instanteneous_displacement(self, trackIdx, timeIdx, deltaT, angle=False, ):
+        """Calculates the displacement of track trackIdx between timeIdx and timeIdx-deltaT.
+        Returns NaN if one of the time slices doesn't exist for the track. If angle is True
+        the angle of the displacement relative to the x axis is also calculated.
+        """
+        if(len(self.tracks[trackIdx])<=timeIdx or timeIdx < deltaT): #Warning, assumes continuous tracks
+            if angle:
+                return float('nan'), float('nan')
+            else:
+                return float('nan')
+        else:
+            return self.distance(np.array(self.tracks[trackIdx][timeIdx][1:])
+                                 - np.array(self.tracks[trackIdx][timeIdx-deltaT][1:]),
+                                 angle = angle)
+
     def distance(self, r, angle = False):
         """Calculates the length of the tangent vector r taking periodicity into account. Can optionally also provide the angle 
         relative to the x axis
@@ -178,14 +194,13 @@ class experiment:
             # r[1] = min(abs(r[1]),abs(abs(r[1])-self.y_max)) #abs(r[1]) % self.y_max
 
         if(angle == True):
-            if r[0]>0:
+            if r[0]>=0:
                 phi = np.arctan(r[1]/r[0])
-            # elif r[0]==0:
-            #     phi
             else:
                 phi= np.arctan(r[1]/r[0]) + np.pi
-            # while(phi > np.pi): phi -=2*np.pi
-            # while(phi < -np.pi): phi +=2*np.pi
+            # phi1 = np.arctan2(r[1],r[0]) # the first argument is y, the second is x; Gives 0 instead of nan for (x,y)=(0,0)
+            # assert(math.isclose(phi,phi1,rel_tol=1e-10) or math.isclose(phi,phi1+2*np.pi,rel_tol=1e-10))
+
             if(phi < 0): phi+= 2*np.pi # all angles in [0,2 pi]
             
             return np.linalg.norm(np.array(r)) , phi 
@@ -290,6 +305,8 @@ class experiment:
             y1 = avr_TAMSD[0]*(tmax) 
             axes.loglog([delta_t_vec[0],delta_t_vec[-1]],[y0,y1],color='blue', 
                         linestyle='dashed', label='Diffusive motion')
+
+        return delta_t_vec, avr_TAMSD
 
     def calculate_tortuosity_dun_method(self, delta_t, min_length):
         """calculates distance travelled and 
@@ -567,20 +584,37 @@ def load_simulation_data(PATH, trackIdx=""):
 
     return green, red, params
 
-def get_positions_and_particle_types(experiments, time):
+def get_positions_and_particle_types(experiments, time, count_cells=False):
     """Extracts positions and particle types from experiment. 
-    0 is red, 1 is green and greenPlus"""
+    0 is red, 1 is green and greenPlus. For experimental data, usually no
+    color is given, so we assume that the first experiment contains the green
+    particles and the second one the red particles."""
     points=[]
     colorIdx=[]
+    nCells = 0
+    nGreenCells = 0
+    nRedCells = 0
     for expIdx, exp in enumerate(experiments):
             for pIdx, track in enumerate(exp.tracks):
                     tIndices, = np.where(np.array(track)[:,0]==time)
 
                     if len(tIndices)>0: #Does the tracked particle exist at t?
-                            tIdx = tIndices[0] #first occurence
-                            colorIdx.append(0 if exp.color[pIdx][tIdx]==" red" else 1)
-                            points.append(np.array(track[tIdx][1:]))
-    return points, colorIdx
+                        nCells+=1
+                        tIdx = tIndices[0] #first occurence
+                        if exp.color==[]: # Experiment
+                            colorIdx.append(0 if expIdx==1 else 1)
+                            if expIdx==0:
+                                nGreenCells +=1
+                            elif expIdx==1:
+                                nRedCells +=1
+                        else: #Simulation
+                            colorIdx.append(0 if exp.color[pIdx][tIdx]==" red" else 1) 
+                            
+                        points.append(np.array(track[tIdx][1:]))
+    if count_cells:
+        return points, colorIdx, [nCells,nGreenCells,nRedCells]
+    else:
+        return points, colorIdx
 
 def get_distance_based_neighbourhood_graph(points, color, experiment, neighbourDistance):
     # Creates graph whose connected components are the clusters, defined by two particles being within neighbourhood distance
@@ -626,9 +660,19 @@ def calculate_mixing_index(experiments, t, neighbourDistance):
     #Barricades
     assert(len(experiments)==2), "Expect exactly two experiments"
     assert(experiments[0].periodic == experiments[1].periodic), "Mixing periodic and non-periodic data"
+    assert(experiments[0].x_max == experiments[1].x_max)
+    assert(experiments[0].y_max == experiments[1].y_max)
 
     points, colorIdx = get_positions_and_particle_types(experiments, t)
-    
+    points = np.array(points)
+
+    # Check for cells stacked on top of each other in experimental data
+    if experiments[0].periodic is False:
+        for idx1 in range(len(points)):
+            for idx2 in range(idx1):
+                if(points[idx1,0]!=points[idx2,0] or points[idx1,1]!=points[idx2,1]):
+                    points[idx1] += np.array([0.1,0.1]) # Slightly shift the stacked cells
+
     # Get colorblind neighbourhood graph
     if neighbourDistance==None:
         G = get_voronoi_based_neighbourhood_graph(points, np.zeros(len(points)), experiments[0])
@@ -951,12 +995,12 @@ def animate_tracks(PATH, velocityArrows=False):
                         0.5*np.cos(velocityMeasurements[particleIdx][frameIdx]),
                         0.5*np.sin(velocityMeasurements[particleIdx][frameIdx])
                         )
-        plt.gca().set_title("Time = %f"%measurementTimes[frameIdx])    
+        # plt.gca().set_title("Time = %f"%measurementTimes[frameIdx])    
         camera.snap()
         #Delete all artists before next frame
         for artist in plt.gca().lines + plt.gca().collections:
             artist.remove()
-    animation = camera.animate()
+    animation = camera.animate(interval=200) #200 miliseconds per frame is deafault setting
     animation.save(PATH+".mov")
 
 def final_snapshot(PATH, velocityArrows=False):

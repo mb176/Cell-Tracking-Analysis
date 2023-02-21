@@ -23,7 +23,7 @@ realisations of the same simulation).
 if(len(sys.argv)==2): #Parameter file given externally:
     PATH = sys.argv[1]
 else: #Give parameter file manually
-    PATH = "/home/marius/PhD/CellMotility/agent_simulation/output_delayed_CIL/randomAngle/A_0.5_Pe_160"
+    PATH = "/home/marius/PhD/CellMotility/agent_simulation/output_23_01/dCIL_persistence_initial_blob/A_0.5_Pe_40"
     
 
 # Folder containing the PATH
@@ -68,13 +68,12 @@ for fileName in sorted(os.listdir(FOLDER)): #Iterate over all files in the folde
     if paramFile is not None and paramFile[-10:]!="velocities":
         INPUT_FILE = paramFile+"_mixing.csv"
         # Find parameters
-        print(paramFile[-10:])
         exp = experiment(paramFile)
         params = exp.read_parameter_file(paramFile)
         A = params["areaFraction"]
         Pe = params["Pe"]
 
-        if (A in A_allowed and Pe < 1000) or restrict_parameters==False:
+        if (A in A_allowed and Pe < 200) or restrict_parameters==False:
 
             # Update linestyle and line color
             if A not in A_dic:

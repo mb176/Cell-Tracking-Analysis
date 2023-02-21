@@ -32,7 +32,7 @@ min_length = 0 #Tracks shorter than that are excluded
 #     exp.read_xml(SOURCE_FOLDER+name+'.xml', min_length)
 
 #     #Plot TAMSD
-#     fig, axes = plt.subplots(1,1)
+#     fig, axes = plt.-ts(1,1)
 #     exp.plot_TAMSD(tmax, min_length_TAMSD, axes)
 #     axes.legend()
 #     fig.savefig(TARGET_FOLDER+name+'_TAMSD.svg',format='svg')
