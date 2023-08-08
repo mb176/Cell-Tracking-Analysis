@@ -17,7 +17,7 @@ if(len(sys.argv)==2):
     parameterFile = sys.argv[1]
 else:
     #Give parameter file manually
-    parameterFile = "/home/marius/PhD/CellMotility/agent_simulation/output_delayed_CIL/RDF/A_0.5_Pe_120"
+    parameterFile = "/home/marius/PhD/CellMotility/agent_simulation/output_delayed_CIL/RDF/A_0.3_Pe_120"
 
 """ This file goes through the realisations belonging to the parameterFile and accumulates a high 
 dimensional histogram that includes self-propulsion angles. The histogram is then written to 
@@ -55,13 +55,18 @@ while(exists(parameterFile+f"_tracks_{n}.csv") and n<= maxRealisations):
     measurementTimes, colorMeasurements, positionMeasurements = readTracksFile(parameterFile+f"_tracks_{n}.csv")
     velocityMeasurements = sim.read_velocity_csv(parameterFile+f"_velocities_tracks_{n}.csv")
     n+=1
-    if n==26:
+    if n==23:
         for timeIdx, time in enumerate(measurementTimes):
             if time in times:
                 print(f"Scanning time slice t={time}\n")
                 for pIdx1 in range(int(params["nParticles"])):
+                    # # Put the p1 at the origin and apply periodic boundary conditions
+                    # centeredPositions = np.array(positionMeasurements[timeIdx])- positionMeasurements[timeIdx][pIdx1]
+                    # centeredPositions = centeredPositions - np.round(centeredPositions/sim.x_max) * sim.x_max
                     for pIdx2 in range(pIdx1):
                         # Distance & angle
+                        # sim.periodic = False
+                        # r, phiR = sim.distance(centeredPositions[pIdx2]-centeredPositions[pIdx1],angle=True)
                         r, phiR = sim.distance(np.array(positionMeasurements[timeIdx][pIdx2])-np.array(positionMeasurements[timeIdx][pIdx1]),angle=True)
                         # Velocity angles
                         phi1 = velocityMeasurements[pIdx1][timeIdx]

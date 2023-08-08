@@ -30,16 +30,17 @@ if(len(sys.argv)==2):
     PATHS = [sys.argv[1]]
 else:
     #Give parameter file manually
-    PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output_delayed_CIL/test/test"]
+    PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output_23_06/CIL_based_demixing/no_cooldown/vary_k_A/k_5000_A_0.9"]
     # PATHS = ["/home/marius/PhD/CellMotility/agent_simulation/output/LowDensity/LowDensity",
     #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensity/HighDensity",
     #         "/home/marius/PhD/CellMotility/agent_simulation/output/HighDensityControl/HighDensityControl"]
 
 for PATH in PATHS:
+    fig,ax = plt.subplots()
     if(exists(PATH+f"_velocities_tracks_1.csv")):
-        final_snapshot(PATH, velocityArrows=False)
+        final_snapshot(ax,PATH, velocityArrows=False)
     else:
-        final_snapshot(PATH, velocityArrows=False)
+        final_snapshot(ax, PATH, velocityArrows=False)
+    plt.savefig(PATH+"_final_frame.png",dpi=500)
     
-    
-
+print("test")

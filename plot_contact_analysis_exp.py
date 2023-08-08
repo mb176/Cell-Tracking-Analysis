@@ -31,10 +31,10 @@ name_pairs = [['/HighDensitycontrolEphB2/High Density control EphB2_green frames
                 ['/Low Density sorting ephrinB1/Low Density sorting EphB2_green frames 11 to 211_Tracks',
                 '/Low Density sorting ephrinB1/Low Density sorting ephrinB1_red frames 11 to 211_Tracks']
                 ]
-pair = name_pairs[2]
-sourceFolder = '/home/marius/PhD/CellMotility/tracking_23_01'#'/home/marius/PhD/CellMotility/tracking_ignacio_2022/'
-outputFolder = '/home/marius/PhD/CellMotility/Plots/Plots_2023_01'
-subfolder = pair[0][:pair[0].rindex("/")]
+pair = name_pairs[1]
+sourceFolder = '/home/marius/PhD/CellMotility/tracking_23_01' #tracking_ignacio_2023/' #tracking_23_01'#'/home/marius/PhD/CellMotility/tracking_ignacio_2022/'
+outputFolder = '/home/marius/PhD/CellMotility/Plots/Plots_2023_01' #Plots_Ignacio2023' #Plots_2023_01'
+subfolder = pair[0][:pair[0].rindex("/")]+"/d_9/"
 
 min_duration = 1 # Contacts shorter or equal than this are excluded from the analysis
 max_duration = 100
@@ -62,7 +62,7 @@ def angle_average(angles):
         angle_avr= np.arctan(direction[1]/direction[0]) + np.pi
     return angle_avr
 
-with open(outputFolder+subfolder+"/contacts_deltaT_5_selected_new.csv", 'r') as f:
+with open(outputFolder+subfolder+"contacts_deltaT_5_d_9.csv", 'r') as f:
     csvFile = csv.reader(f, delimiter=",")
     for lineIdx, line in enumerate(csvFile):
         if lineIdx == 1:
@@ -97,13 +97,14 @@ print(duration2/durationCounter, duration_err)
 
 # Plot duration
 fig, ax = plt.subplots()
-ax.set_title(f"Min contact frames = {min_duration}, Max contacts = {max_contacts}, (R = {contact_radius}, delta T = {deltaT})")
-ax.bar([0,1,2,3], 2*duration, tick_label=[f"red hom ({durationCounter[0]})", f"green hom ({durationCounter[1]})", f"green het ({durationCounter[2]})", f"red het ({durationCounter[3]})"])
+# [f"red hom ({durationCounter[0]})", f"green hom ({durationCounter[1]})", f"green het ({durationCounter[2]})", f"red het ({durationCounter[3]})"]
+# ax.set_title(f"Min contact frames = {min_duration}, Max contacts = {max_contacts}, (R = {contact_radius}, delta T = {deltaT})")
+ax.bar([0,1,2,3], 2*duration, tick_label=[f"EphrinB1 hom", f"EphB2 hom", f"EphB2 het", f"EphrinB1 het"])
 ax.errorbar([0,1,2,3], 2*duration, yerr=2*duration_err,fmt="o", color="r")
-ax.set_ylabel("Time [min]")
+ax.set_ylabel("Contact duration [min]")
 plt.xticks(rotation = 45)
 plt.tight_layout() # so labels don't get cut off
-fig.savefig(outputFolder+subfolder+"/contact_duration.png",dpi=500)
+fig.savefig(outputFolder+subfolder+"contact_duration.png",dpi=500)
 
 # # Plot velocity angle after collision
 # theta1_end_avr = []
@@ -126,7 +127,7 @@ ax.bar([0,1,2,3], CIL_percentage, tick_label=[f"red hom ({theta1_end_counter[0]}
 ax.set_ylabel("CIL percentage")
 plt.xticks(rotation = 45)
 plt.tight_layout() # so labels don't get cut off
-fig.savefig(outputFolder+subfolder+"/CIL_percentage.png",dpi=500)
+fig.savefig(outputFolder+subfolder+"CIL_percentage.png",dpi=500)
 
 
 # # Scatter plot displacement after collision
@@ -142,7 +143,7 @@ fig.savefig(outputFolder+subfolder+"/CIL_percentage.png",dpi=500)
 # ax.set_xlabel("X [pixel]")
 # ax.set_ylabel("Y [pixel]")
 # ax.legend()
-# fig.savefig(outputFolder+subfolder+"/displacments_scatter.png",dpi=500)
+# fig.savefig(outputFolder+subfolder+"displacments_scatter.png",dpi=500)
 
 # Plot average cumulated displacement after collision
 fig, ax = plt.subplots()
@@ -158,7 +159,7 @@ ax.set_xlabel("X [pixel]")
 ax.set_ylabel("Y [pixel]")
 plt.gca().set_aspect('equal')
 ax.legend()
-fig.savefig(outputFolder+subfolder+"/sum_of_displacments.png",dpi=500)
+fig.savefig(outputFolder+subfolder+"sum_of_displacments.png",dpi=500)
 
 # Plot average absolute displacement
 fig, ax = plt.subplots()
@@ -176,7 +177,7 @@ ax.set_ylabel("Average displacment [pixel]")
 plt.xticks(rotation = 45)
 plt.tight_layout() # so labels don't get cut off
 ax.legend()
-fig.savefig(outputFolder+subfolder+f"/abs_displacement_after_contact_deltaT_{deltaT}.png",dpi=500)
+fig.savefig(outputFolder+subfolder+f"abs_displacement_after_contact_deltaT_{deltaT}.png",dpi=500)
 
 # plot angle histogram of distance of theta1 from 0
 fig, ax = plt.subplots(2,2)
@@ -193,7 +194,7 @@ for typeIdx in range(4):
     ax[indices[typeIdx]].hist(180/np.pi*np.array(theta1_end_abs[typeIdx]),label=labels[typeIdx],bins=int(np.pi/CIL_angle*2))
     ax[indices[typeIdx]].set_ylabel("Frequency")
     ax[indices[typeIdx]].legend()
-# fig.savefig(outputFolder+subfolder+f"/theta1_histograms.png",dpi=500)
+# fig.savefig(outputFolder+subfolder+f"theta1_histograms.png",dpi=500)
 
 # Plot average angle deviation from zero
 theta1_end_deviation = np.zeros(4)
@@ -207,21 +208,49 @@ ax.bar([0,1,2,3], 360/2/np.pi*theta1_end_deviation, tick_label=[f"red hom ({thet
 ax.set_ylabel("Median deviation of theta1 from 0 [degrees]")
 plt.xticks(rotation = 45)
 plt.tight_layout() # so labels don't get cut off
-# fig.savefig(outputFolder+subfolder+"/theta1_avr_deviation.png",dpi=500)
+# fig.savefig(outputFolder+subfolder+"theta1_avr_deviation.png",dpi=500)
 
 
 
 # Histograms averaged over cell types
 
-fig, ax = plt.subplots(1,2)
+fig, ax = plt.subplots(1,2,sharey=True)
 theta1_hom = np.concatenate((theta1_end_abs[0], theta1_end_abs[1]), axis=0)
 theta1_het = np.concatenate((theta1_end_abs[2], theta1_end_abs[3]), axis=0)
 labels = ["red hom", "green hom", "green het", "red het"]
-ax[0].set_title(stats.ks_2samp(theta1_hom,theta1_het)) 
-ax[0].hist(180/np.pi*theta1_het,label="Heterotypic",bins=int(np.pi/CIL_angle*2))
-ax[1].hist(180/np.pi*theta1_hom,label="Homotypic",bins=int(np.pi/CIL_angle*2))
+# ax[0].set_title(stats.ks_2samp(theta1_hom,theta1_het)) 
+
+
+ax[0].hist(180/np.pi*theta1_het,label="Heterotypic",bins=int(np.pi/CIL_angle*2),density=True)
+ax[1].hist(180/np.pi*theta1_hom,label="Homotypic",bins=int(np.pi/CIL_angle*2), density=True)
+for axis in ax:
+    axis.set_xlabel("Exit ange [degree]")
+    axis.set_ylabel("Probability density")
+
+ax[0].set_title("(a)",  loc='left', fontsize='medium') #fontfamily='sans serif',
+ax[1].set_title("(b)",  loc='left', fontsize='medium') #fontfamily='sans serif',
 ax[0].legend()
 ax[1].legend()
+plt.tight_layout()
 
-# fig.savefig(outputFolder+subfolder+f"/theta1_histograms_2.png",dpi=500)
+
+print(stats.ks_2samp(theta1_hom,theta1_het))
+with open(outputFolder+subfolder+f"theta1_histograms_2.txt","w") as f:
+    print(stats.ks_2samp(theta1_hom,theta1_het),file=f)
+    # Find variance
+    print(f"Variance hom: {np.var(theta1_hom)/(2*np.pi)*360}, variance het: {np.var(theta1_het)/(2*np.pi)*360}",file = f)
+    # Variance of extended distribution
+    theta1_hom_ext = []
+    theta1_het_ext = []
+    for theta1 in theta1_hom:
+        theta1_hom_ext.append(theta1)
+        theta1_hom_ext.append(-theta1)
+    for theta1 in theta1_het:
+        theta1_het_ext.append(theta1)
+        theta1_het_ext.append(-theta1)
+    # Find variance
+    print(f"Variance hom ext: {np.var(theta1_hom_ext)/(2*np.pi)*360}, variance het ext: {np.var(theta1_het_ext)/(2*np.pi)*360}",file = f)
+
+
+fig.savefig(outputFolder+subfolder+f"theta1_histograms_2.png",dpi=500)
 plt.show()

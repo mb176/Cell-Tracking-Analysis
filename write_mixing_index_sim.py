@@ -18,15 +18,15 @@ it into a file named "*_mixing.csv".
 """
 
 # Parameter
-NEIGHBOUR_DISTANCE=None
+NEIGHBOUR_DISTANCE=1.1
 
 if(len(sys.argv)==2): #Parameter file given externally:
     paramFile = sys.argv[1]
 
 else: #Give parameter file manually, loop over all experiments in the folder
-    paramFile = "/home/marius/PhD/CellMotility/agent_simulation/output_23_01/dCIL_persistence_initial_blob/A_0.5_Pe_80"
+    paramFile = "/home/marius/PhD/CellMotility/agent_simulation/output_23_06/CIL_based_demixing/no_cooldown_no_persistence/vary_D_A_k_5000/A_0.8_D_10"
 
-OUTPUT_FILE = paramFile+"_mixing.csv"
+OUTPUT_FILE = paramFile+f"_mixing_d_{NEIGHBOUR_DISTANCE}.csv"
 try:
     os.remove(OUTPUT_FILE)
 except:

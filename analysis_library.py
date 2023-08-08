@@ -16,6 +16,7 @@ import copy
 import networkx as nx
 from os.path import exists  
 from tess import Container
+from numba import jit
 import math
 
 class experiment:
@@ -186,12 +187,10 @@ class experiment:
         relative to the x axis
         """
         if self.periodic == True:
-            while(r[0]>=0.5 * self.x_max): r[0] -= self.x_max
-            while(r[0]<-0.5 * self.x_max): r[0] += self.x_max 
-            while(r[1]>=0.5 * self.y_max): r[1] -= self.y_max
-            while(r[1]<-0.5 * self.y_max): r[1] += self.y_max 
-            # r[0] = min(abs(r[0]),abs(abs(r[0])-self.x_max)) #abs(r[0]) % self.x_max
-            # r[1] = min(abs(r[1]),abs(abs(r[1])-self.y_max)) #abs(r[1]) % self.y_max
+            r[0] = r[0] - round(r[0]/self.x_max) * self.x_max 
+            r[1] = r[1] - round(r[1]/self.y_max) * self.y_max 
+            # Note: This enforces periodic boundaries for tangent vectors. For position vectors with only positive components,
+            # use np.floor instead.
 
         if(angle == True):
             if r[0]>=0:
@@ -242,32 +241,41 @@ class experiment:
         MSD[1:] = MSD[1:]/nTracks[1:]
         return MSD, time
 
-    def TAMSD(self,delta_t,min_length):
+    def TAMSD(self,delta_t,min_length, overlappingIntervals=True, returnIndices=False):
         """Returns the average TAMSD as well as all individual TAMSDs for all tracks in the experiment
          whose length exceed min_length. WARNING: Not suited for periodic boundary conditions (doesn't undo wraparound)
         :delta_t time interval (in timesteps, not minutes) for which the TAMASD will be computed
         :min_length minimum number of timesteps a track must have to be used for the average
+        :overlappingIntervals Bool, if False the measurement intervals are non-overlapping, i.e. [0,5],[6,10],...
+            id True they do, i.e. [0,5],[1,6],...
         """
         assert delta_t < min_length, "The minimum track length must exceed the time average interval"
         nTracks = 0 # counts how many tracks are included/ have the minimum length
-        average = 0
+        averageTAMSD = 0
         individual_TAMSD = [] 
-        for track in self.tracks:
+        trackIndices = []
+        for trackIdx, track in enumerate(self.tracks):
             track_duration = len(track)
             total = 0
             if track_duration >= min_length:
                 nTracks += 1
                 #Calculate TAMSD for the track
+                nIntervals = 0
                 for idx in range(track_duration-delta_t):
-                    distance = self.distance(np.array(track[idx][1:])-np.array(track[idx+delta_t][1:]))
-                    total += np.dot(distance,distance)
-                TAMSD= total/(track_duration-delta_t)
+                    if overlappingIntervals or (idx % delta_t == 0):
+                        distance = self.distance(np.array(track[idx][1:])-np.array(track[idx+delta_t][1:]))
+                        total += distance**2
+                        nIntervals +=1 
+                TAMSD= total/(nIntervals)
                 individual_TAMSD.append(TAMSD)
-                average += TAMSD
+                trackIndices.append(trackIdx)
+                averageTAMSD += TAMSD
         assert nTracks > 0, 'None of the tracks have the minimum length'
-        average = average/nTracks
-
-        return average, individual_TAMSD
+        averageTAMSD = averageTAMSD/nTracks
+        if returnIndices:
+            return averageTAMSD, individual_TAMSD, trackIndices
+        else:
+            return averageTAMSD, individual_TAMSD
 
     def plot_TAMSD(self, tmax, min_length,axes,label,color,reference=True):
         """Calculates the TAMSD as a function of the time intervall delta_t for all tracks 
@@ -322,7 +330,7 @@ class experiment:
         self.tortuosity = np.zeros(nTracks)
         n=0 #track index
         for track in self.tracks:
-            track_duration = int(len(track)*self.timeStep) #almost correct, some of the measured tracks have gaps in them
+            track_duration = int(len(track)*self.timeStep) 
             if track_duration >= min_length:
                 tortuosity = 0
                 n_intervals = int(track_duration//delta_t)
@@ -485,8 +493,8 @@ class experiment:
         #Plot Histogram
         if no_plot==False:
             bin_midpoints = bins+(bins[1]-bins[0])/2
-            axes.plot(bin_midpoints[:-cutoff], radial_density, label=label, color = color)
-            axes.set_xlabel(r'Distance')
+            axes.plot(3.34*bin_midpoints[:-cutoff], radial_density, label=label, color = color)
+            axes.set_xlabel(r'Distance [$\mu m$]')
             axes.set_ylabel(r'Radial distribution function')
             axes.legend()
         
@@ -496,14 +504,18 @@ class experiment:
         if len(self.tracks)==0:
             return []
         elif self._measurementTimes==None:
-            self._measurementTimes=[self.tracks[0][idx][0] for idx in range(len(self.tracks[0]))]
+            longestTrackIdx = 0
+            for trackIdx, track in enumerate(self.tracks): 
+                if len(self.tracks[trackIdx])> len(self.tracks[longestTrackIdx]):
+                    longestTrackIdx = trackIdx
+            self._measurementTimes=[self.tracks[longestTrackIdx][idx][0] for idx in range(len(self.tracks[longestTrackIdx]))]
         return self._measurementTimes
 
     measurementTimes = property(get_measurementTimes)
 
 ##################################### End of experiment class ############################################
 
-def plot_mixed_particle_radial_density(axes, experiments, t ,n_bins, n_reference_points, no_plot=False, cutoff_percentage=0):
+def plot_mixed_particle_radial_density(axes, experiments, t ,n_bins, n_reference_points, no_plot=False, cutoff_percentage=0,label=None):
     """Calculates a histogram of the the distances between the points in the two experiments, i.e. cross radial distribution 
     function. Then plots them to axes.
     :axes Figure on which the plot is drawn
@@ -562,9 +574,12 @@ def plot_mixed_particle_radial_density(axes, experiments, t ,n_bins, n_reference
     #Plot Histogram
     if no_plot==False:
         bin_midpoints = bins+(bins[1]/2)
-        axes.plot(bin_midpoints[:-cutoff], radial_density, label= 'Red-green RDF')
+        if label == None:
+            label  = 'EphB2-ephrinB1 RDF'
+
+        axes.plot(3.34*bin_midpoints[:-cutoff], radial_density, label= label)
         axes.legend()
-        axes.set_xlabel(r'Distance')
+        axes.set_xlabel(r'Distance [$\mu m$]')
         axes.set_ylabel(r'Radial distribution function')
 
 def load_simulation_data(PATH, trackIdx=""):
@@ -666,12 +681,12 @@ def calculate_mixing_index(experiments, t, neighbourDistance):
     points, colorIdx = get_positions_and_particle_types(experiments, t)
     points = np.array(points)
 
-    # Check for cells stacked on top of each other in experimental data
-    if experiments[0].periodic is False:
-        for idx1 in range(len(points)):
-            for idx2 in range(idx1):
-                if(points[idx1,0]!=points[idx2,0] or points[idx1,1]!=points[idx2,1]):
-                    points[idx1] += np.array([0.1,0.1]) # Slightly shift the stacked cells
+    # # Check for cells stacked on top of each other in experimental data
+    # if experiments[0].periodic is False:
+    #     for idx1 in range(len(points)):
+    #         for idx2 in range(idx1):
+    #             if(points[idx1,0]!=points[idx2,0] or points[idx1,1]!=points[idx2,1]):
+    #                 points[idx1] += np.array([0.1,0.1]) # Slightly shift the stacked cells
 
     # Get colorblind neighbourhood graph
     if neighbourDistance==None:
@@ -731,12 +746,6 @@ def max_cluster_size(experiments, t, neighbourDistance = 1.05):
     return max(connectedComponentsSize)
 
 def plot_cluster_histogram(axes, clusterSizes, label ,color, nBins=None):
-
-    # G = get_distance_based_neighbourhood_graph(points, colorList, experiments[0], neighbourDistance)
-    
-    # #get connected components
-    # connectedComponentsSize = [len(comp) for comp in nx.connected_components(G)]
-
     maxSize = max(clusterSizes)
     if (nBins==None):
         nBins = maxSize
@@ -1000,10 +1009,10 @@ def animate_tracks(PATH, velocityArrows=False):
         #Delete all artists before next frame
         for artist in plt.gca().lines + plt.gca().collections:
             artist.remove()
-    animation = camera.animate(interval=200) #200 miliseconds per frame is deafault setting
+    animation = camera.animate(interval=300) #200 miliseconds per frame is deafault setting
     animation.save(PATH+".mov")
 
-def final_snapshot(PATH, velocityArrows=False):
+def final_snapshot(ax, PATH, velocityArrows=False):
     #Get parameters
     sim = experiment("test")
     params = sim.read_parameter_file(PATH)
@@ -1017,6 +1026,7 @@ def final_snapshot(PATH, velocityArrows=False):
         measurementTimes, colorMeasurements, positionMeasurements = readTracksFile(PATH+"_tracks.csv")
     except: # Multiple realisations
         measurementTimes, colorMeasurements, positionMeasurements = readTracksFile(PATH+"_tracks_1.csv")
+
     positionMeasurements = np.array(positionMeasurements)
 
     if velocityArrows==True:
@@ -1027,9 +1037,12 @@ def final_snapshot(PATH, velocityArrows=False):
             velocityMeasurements = sim.read_velocity_csv(PATH+"_velocities_tracks_1.csv")
 
     #Set up figure 
-    fig,ax = plt.subplots()
-    plt.axis([0, xLength, 0, yLength])
-    plt.gca().set_aspect('equal', adjustable='box') #Makes both axis have some scaling while keeping the set limits
+    
+    # plt.axis([0, xLength, 0, yLength])
+    # plt.gca().set_aspect('equal', adjustable='box') #Makes both axis have some scaling while keeping the set limits
+    ax.set_xlim([0, xLength])
+    ax.set_ylim([0, yLength])
+    ax.set_aspect('equal', adjustable='box')
 
     frameIdx = -1 # last frame
     c = getColors(colorMeasurements[frameIdx])
@@ -1037,7 +1050,7 @@ def final_snapshot(PATH, velocityArrows=False):
         circle = plt.Circle((positionMeasurements[frameIdx][particleIdx][0],
                             positionMeasurements[frameIdx][particleIdx][1]), 
                             radius=R, linewidth=0, color = c[particleIdx], alpha = transparency)
-        plt.gca().add_artist(circle)
+        ax.add_artist(circle)
         if velocityArrows==True:
             plt.arrow(positionMeasurements[frameIdx][particleIdx][0],
                         positionMeasurements[frameIdx][particleIdx][1],
@@ -1045,9 +1058,165 @@ def final_snapshot(PATH, velocityArrows=False):
                         0.5*np.sin(velocityMeasurements[particleIdx][frameIdx])
                         )
 
-            
-    plt.gca().set_title("Time = %f"%measurementTimes[frameIdx])    
-    plt.savefig(PATH+"_final_frame.png",dpi=500)
+        
+
+    # plt.gca().set_title("Time = %f"%measurementTimes[frameIdx])  
+    # plt.show()  
+
+def get_avrMaxClusterSize(measurementTimes, clusterSizes, nParticles, average=False):
+    """Find average max cluster size for all simulations in the folder.
+    Finds the average maximum cluster size at each measurement time. Finds
+    the individual realisations by summing up the cluster sizes until it 
+    reaches nParticles. If average is set to True, the average cluster size
+    will be returned instead
+    """
+    avrMaxClusterSize = np.zeros(len(measurementTimes))
+    avrAvrClusterSize = np.zeros(len(measurementTimes))
+    for tIdx in range(len(measurementTimes)):
+        maxClusterSize = []
+        avrClusterSize = []
+        clusters = []
+        n = 0 # Keeps track of the number particles in clusters
+        for size in clusterSizes[tIdx]:
+            n += size
+            if size > 1: # Only consider clusters with more than one cell
+                clusters.append(size)
+            if n == nParticles: # Is this realisation complete?
+                maxClusterSize.append(max(clusters))
+
+                avrClusterSize.append(np.average(np.array(clusters)))
+                clusters = []
+                n = 0
+            assert(n < nParticles), "The sum of all cluster sizes in a realisation has to be equal to the total number of particles."
+        avrMaxClusterSize[tIdx] = np.sum(np.array(maxClusterSize))/len(maxClusterSize)
+        avrAvrClusterSize[tIdx] = np.average(np.array(avrClusterSize))
+    if average:
+        return avrAvrClusterSize
+    else:
+        return avrMaxClusterSize
+
+
+def find_local_densities(experiments, neighbourDistance):
+    """Calculates the local "density" of every particle at every time step by counting the number of particles of 
+    each type within neighbourDistance."""
+    measurementTimes = experiments[0].get_measurementTimes()
+    nParticles = len(experiments[0].tracks) + len(experiments[1].tracks)
+    nGreenParticles = len(experiments[0].tracks)
+    nRedParticles = len(experiments[1].tracks)
+    x_length = max(experiments[0].x_max,experiments[1].x_max)
+    y_length = max(experiments[0].y_max,experiments[1].y_max)
+
+
+    localDensity = np.zeros((nParticles, len(measurementTimes), 2), dtype=int)
+
+    filledTracks  = fill_tracks(experiments[0].tracks+experiments[1].tracks)
+    for timeIdx, time in enumerate(measurementTimes):
+        
+        neighbourMatrix = distance_based_neighbours(filledTracks, timeIdx, neighbourDistance, x_length, y_length, periodic=experiments[0].periodic)
+
+        for pIdx in range(nParticles):
+            if filledTracks[pIdx, timeIdx, 0] != -1: #Does the track exist at this time?
+                localDensity[pIdx, timeIdx, 0] = np.sum(neighbourMatrix[pIdx,:nGreenParticles]) 
+                localDensity[pIdx, timeIdx, 1] = np.sum(neighbourMatrix[pIdx, nGreenParticles:] )
+            else:
+                localDensity[pIdx, timeIdx, 0] = -1
+                localDensity[pIdx, timeIdx, 1] = -1
+
+
+    return localDensity
+    
+def fill_tracks(tracks):
+    """ Takes the ragged tracks array from experiments and turns it into 
+    a regular array by filling the missing time-space coordinates with
+    [-1,-1,-1]."""
+
+    #Find all measurement times
+    longestTrackIdx = 0
+    for trackIdx, track in enumerate(tracks): 
+        if len(tracks[trackIdx])> len(tracks[longestTrackIdx]):
+            longestTrackIdx = trackIdx
+    measurementTimes = [tracks[longestTrackIdx][idx][0] for idx in range(len(tracks[longestTrackIdx]))]
+
+    filledTracks = np.full((len(tracks), len(measurementTimes), 3), -1)
+
+    for trackIdx, track in enumerate(tracks):
+        tStart = int(track[0][0]) # For experiments the time doubles as the time Idx
+        tEnd = int(track[-1][0])
+        for timeIdx in range(tStart, tEnd+1):
+            filledTracks[trackIdx, timeIdx,:] = track[timeIdx-tStart]
+
+    return filledTracks
+
+@jit(nopython=True)
+def distance_based_neighbours(tracks, timeIdx, neighbourDistance, xMax, yMax, periodic=False):
+    """Optimised routine using numba for 
+    more efficient neighbour finding. Expects complete or filled tracks."""
+
+    neighbourMatrix = np.full((len(tracks), len(tracks)),0)
+    
+    for pIdx1 in range(len(tracks)):
+        for pIdx2 in range(0, pIdx1):
+            if(tracks[pIdx1, timeIdx,0]!=-1 and tracks[pIdx2, timeIdx,0]!=-1): # Do tracks exist at this time?
+                r = tracks[pIdx1,timeIdx,1:] - tracks[pIdx2,timeIdx,1:]
+                if periodic:
+                    while(r[0]>=0.5 * xMax): r[0] -= xMax
+                    while(r[0]<-0.5 * xMax): r[0] += xMax 
+                    while(r[1]>=0.5 * yMax): r[1] -= yMax
+                    while(r[1]<-0.5 * yMax): r[1] += yMax
+                distance = np.sqrt(r[0]**2+r[1]**2)
+                if distance <= neighbourDistance:
+                    neighbourMatrix[pIdx1, pIdx2] = 1
+                    neighbourMatrix[pIdx2, pIdx1] = 1
+
+    return neighbourMatrix
+
+
+    # cellIdx = np.zero((nParticles, 2))
+    # for point in points:
+    #     cellIdx[0]+=1
+
+#    points, colorIdx = get_positions_and_particle_types(experiments, t)
+#     points = np.array(points)
+
+#     # Check for cells stacked on top of each other in experimental data
+#     if experiments[0].periodic is False:
+#         for idx1 in range(len(points)):
+#             for idx2 in range(idx1):
+#                 if(points[idx1,0]!=points[idx2,0] or points[idx1,1]!=points[idx2,1]):
+#                     points[idx1] += np.array([0.1,0.1]) # Slightly shift the stacked cells
+
+#     # Get colorblind neighbourhood graph
+#     if neighbourDistance==None:
+#         G = get_voronoi_based_neighbourhood_graph(points, np.zeros(len(points)), experiments[0])
+#     else:
+#         G = get_distance_based_neighbourhood_graph(points, np.zeros(len(points)), experiments[0], neighbourDistance)
+
+
+# from numba import jit
+# import awkward as ak
+# @jit(nopython=True)
+# def get_points(tracks, time):
+#     """Returns all cell positions at the specified time. The main difficulty here is that the experimental 
+#     don't exist for all time points, so each has to be checked for existence at time. Assumes a list 
+#     of the form tracks[trackIdx, timeIdx, coordinateIdx], where the coordinateIdx runs over [time, x, y]."""
+#     #Search all tracks for points
+#     # points = []
+#     for trackIdx in range(len(tracks)):
+#         track = tracks[trackIdx]
+#         # Find out if track contains this time slice
+#         for t in track[]
+#         # track = np.array(tracks[trackIdx])
+#         # tIndices, = np.where(track[:,0]==time) # 
+#         tIndices = [10]
+#         if len(tIndices)>0: #Does the tracked particle exist at t?
+#             tIdx = tIndices[0] #Want first (and only) occurence
+#             # points.append(track[tIdx][1:])
+
+#     # return points
+
+
+
+
 
 
 # from numba import jit

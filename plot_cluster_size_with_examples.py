@@ -25,17 +25,17 @@ realisations of the same simulation).
 
 
 ############################# Parameters #######################################
-restrict_parameters = True # If False the selection below is ignored
+restrict_parameters = False # If False the selection below is ignored
 A_allowed = [0.3, 0.5]
-D_allowed = [10, 100, 400, 10]
-D_persistent_allowed = [0.1,5,50]
-examples = [[10,0.1],[100,0.1],[10,10],[10,50]]
+D_allowed = [400, 600, 800]
+D_persistent_allowed = [20, 35, 50]
 D_SWEEP = True #Set true if parameters are varied over D, D+; Otherwise sweep over Pe, A
 D_TAU_SWEEP = False
 VARIANT_SWEEP = False # Sweep over different varaints of the model, use the file names as labels
 K_A_SWEEP = False
 D_A_SWEEP = False
-NAME = "max_cluster_size"
+NAME = "avr_cluster_size"
+examples = [[10,0.1],[100,0.1],[10,10],[10,50]]
 if(len(sys.argv)==2): #Parameter file given externally:
     PATH = sys.argv[1]
 else: #Give parameter file manually
@@ -48,11 +48,11 @@ FOLDER = PATH[0:PATH.rindex("/")+1] # rindex finds last occurence of a character
 
 # Initialise graphic
 fig_all, ax_all = plt.subplots(1,1)
-fig_colors, ax_colors = plt.subplots(1,2, figsize=(15/2.54,8/2.52),sharey=True)
+fig_colors, ax_colors = plt.subplots(1,2)
 ax_green = ax_colors[0]
 ax_red = ax_colors[1]
 fig_all_log, ax_all_log = plt.subplots(1,1)
-fig_colors_log, ax_colors_log = plt.subplots(1,2,figsize=(15/2.54,8/2.52),sharey=True)
+fig_colors_log, ax_colors_log = plt.subplots(1,2)
 ax_green_log = ax_colors_log[0]
 ax_red_log = ax_colors_log[1]
 
@@ -69,7 +69,11 @@ persistentD_dic = {}
 k_dic = {}
 
 # Prepare phasediagramm of the mixing index in the last timestep for all particles
-fig_phasediagramm, ax2 = plt.subplots(1,1,figsize=(10/2.54, 10/2.54)) # centimeters to inches
+fig_phasediagramm, axes = plt.subplot_mosaic([['a)', 'b)', 'c)'], ['a)','d)', 'e)']],
+                              layout='constrained', 
+                              gridspec_kw={'width_ratios': [2,1,1]},
+                              figsize = (16/2.54,8/2.54))
+ax2 = axes['a)']
 # fig_parameter_plot, ax3 = plt.subplots(1,1,figsize=(10/2.54, 10/2.54))
 
 areaFractions = []
@@ -110,7 +114,7 @@ for fileName in sorted(os.listdir(FOLDER)): #Iterate over all files in the folde
         k = params["k"]
 
 
-        if ([D , persistentD] in examples) or restrict_parameters==False:
+        if (k>= 1000) or restrict_parameters==False:
             # Update linestyle and line color
             if D_SWEEP:
                 if D not in D_dic:
@@ -225,12 +229,10 @@ for fileName in sorted(os.listdir(FOLDER)): #Iterate over all files in the folde
 
 # Label and save the plots
 ax_all.legend(); ax_all.set_xlabel("Time"); ax_all.set_ylabel("Average cluster size"); ax_all.set_title("All clusters")
-# ax_green.legend(); 
-ax_green.set_xlabel("Time"); ax_green.set_ylabel("Average cluster size"); ax_green.set_title("Green clusters")
+ax_green.legend(); ax_green.set_xlabel("Time"); ax_green.set_ylabel("Average cluster size"); ax_green.set_title("Green clusters")
 ax_red.legend(); ax_red.set_xlabel("Time"); ax_red.set_ylabel("Average cluster size"); ax_red.set_title("Red clusters")
 ax_all_log.legend(); ax_all_log.set_xlabel("Time"); ax_all_log.set_ylabel("Average cluster size"); ax_all_log.set_title("All clusters")
-# ax_green_log.legend(); 
-ax_green_log.set_xlabel("Time"); ax_green_log.set_ylabel("Average cluster size"); ax_green_log.set_title("Green clusters")
+ax_green_log.legend(); ax_green_log.set_xlabel("Time"); ax_green_log.set_ylabel("Average cluster size"); ax_green_log.set_title("Green clusters")
 ax_red_log.legend(); ax_red_log.set_xlabel("Time"); ax_red_log.set_ylabel("Average cluster size"); ax_red_log.set_title("Red clusters")
 
 # Make room for the legend on the left
@@ -308,15 +310,29 @@ else:
 # fig_phasediagramm.subplots_adjust(right=0.8)
 # cbar_ax = fig_phasediagramm.add_axes([0.85, 0.15, 0.05, 0.7])
 # fig_phasediagramm.colorbar(im1, cax=cbar_ax)
-ax2.set_title(r"$<N_{Green}>-<N_{red>}$")
-# ax2[1].set_title("Red max. cluster size")
-fig_phasediagramm.colorbar(im1,orientation='horizontal')
-# fig_phasediagramm.colorbar(im2,orientation='horizontal')
-plt.tight_layout() # So labels don't get cut off
+ax2.set_title(r"$<N_{green}>-<N_{red}>$",fontsize='10')
 
+# Add the Examples
+ax2.set_title("(a)",  loc='left', fontsize='10') #fontfamily='sans serif',
+axes_labels = ["b)","c)","d)","e)"]
+
+for idx in range(4):
+    ax = axes[axes_labels[idx]]
+    PATH = FOLDER +f"D_{examples[idx][0]}_persistentD_{examples[idx][1]}"
+    final_snapshot(ax,PATH, velocityArrows=False)
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_title("("+axes_labels[idx],  loc='left', fontsize='10') #fontfamily='sans serif',
+    # ax.set_title(f"$D$={examples[idx][0]}, $D^+$={examples[idx][1]}" ,  loc='right', fontsize='8') #fontfamily='sans serif',
+    # ax.set_title(f"A={examples[idx][0]}, D={examples[idx][0]}",  loc='center', fontsize='medium') #fontfamily='sans serif',
+
+# ax2.set_aspect(0.8) # make room for colorbar
+fig_phasediagramm.colorbar(im1,ax=ax2)#,shrink=0.6
+# plt.tight_layout()
+fig_phasediagramm.savefig(FOLDER+"clustering_examples.png",dpi=400)
 
 #Save figures
 fig_all.savefig(FOLDER+NAME+".png")
 fig_colors.savefig(FOLDER+NAME+"_by_type.png")
 fig_colors_log.savefig(FOLDER+NAME+"_by_typ_log.png")
-fig_phasediagramm.savefig(FOLDER+NAME+"_phasediagram.png")
+# fig_phasediagramm.savefig(FOLDER+NAME+"_phasediagram.png")

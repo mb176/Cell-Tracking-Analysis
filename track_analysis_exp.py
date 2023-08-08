@@ -6,10 +6,13 @@ from matplotlib import pyplot as plt
 from scipy import stats
 from matplotlib import animation
 plt.style.use('seaborn-whitegrid')
+import matplotlib
+matplotlib.rcParams.update({'font.size': 10})
+plt.rcParams["font.family"] = "sans serif"
 plt.close("all")
 
-SOURCE_FOLDER="/home/marius/PhD/CellMotility/tracking_ignacio_2022"
-TARGET_FOLDER="/home/marius/PhD/CellMotility/Plots/Plots_Ignacio2022"
+SOURCE_FOLDER="/home/marius/PhD/CellMotility/tracking_23_01"
+TARGET_FOLDER="/home/marius/PhD/CellMotility/Plots/Plots_2023_01"
 
 names = ['/HighDensitycontrolEphB2/HighDensitycontrolEphB2_greenframes0to211',
         '/HighDensitycontrolEphB2/HighDensitycontrolEphB2_redframes0to211',
@@ -19,9 +22,9 @@ names = ['/HighDensitycontrolEphB2/HighDensitycontrolEphB2_greenframes0to211',
         '/Low Density sorting ephrinB1/Low Density sorting ephrinB1_red frames 11 to 211'
         ]
 
+
 ########################  Global parameters ##########################
 min_length = 0 #Tracks shorter than that are excluded
-
 
 
 
@@ -56,16 +59,19 @@ min_length = 0 #Tracks shorter than that are excluded
 
 ############################### Mixed Cell Type Measurements ##############################
 
-name_pairs = [['/HighDensitycontrolEphB2/High Density control EphB2_green frames 0 to 211_Tracks',
-        '/HighDensitycontrolEphB2/High Density control EphB2_red frames 0 to 211_Tracks'],
-        ['/High Density sorting EphB2/High Density sorting EphB2_green frames 0 to 211_Tracks',
-        '/High Density sorting EphB2/High Density sorting ephrinB1_red 0 to 211_Tracks'],
-        ['/Low Density sorting ephrinB1/Low Density sorting EphB2_green frames 11 to 211_Tracks',
-        '/Low Density sorting ephrinB1/Low Density sorting ephrinB1_red frames 11 to 211_Tracks']
-        ]
+# name_pairs = [['/HighDensitycontrolEphB2/High Density control EphB2_green frames 0 to 211_Tracks',
+#         '/HighDensitycontrolEphB2/High Density control EphB2_red frames 0 to 211_Tracks'],
+#         ['/High Density sorting EphB2/High Density sorting EphB2_green frames 0 to 211_Tracks',
+#         '/High Density sorting EphB2/High Density sorting ephrinB1_red 0 to 211_Tracks'],
+#         ['/Low Density sorting ephrinB1/Low Density sorting EphB2_green frames 11 to 211_Tracks',
+#         '/Low Density sorting ephrinB1/Low Density sorting ephrinB1_red frames 11 to 211_Tracks']
+#         ]
 
-# name_pairs = [['/Low Density sorting ephrinB1/Low Density sorting EphB2_green frames 11 to 211_Tracks',
-#                 '/Low Density sorting ephrinB1/Low Density sorting ephrinB1_red frames 11 to 211_Tracks']]
+name_pairs = [['/Low Density sorting ephrinB1/Low Density sorting EphB2_green frames 11 to 211_Tracks',
+                '/Low Density sorting ephrinB1/Low Density sorting ephrinB1_red frames 11 to 211_Tracks']]
+
+
+
 
 for pair in name_pairs:
     #Load green tracks
@@ -89,20 +95,25 @@ for pair in name_pairs:
 
     #Dun method
     fig, axes = plt.subplots(1,1)
-    green.plot_tortuosity(axes, min_length_tortuosity, 'Green cells','g', n_bins=n_bins, 
+    green.plot_tortuosity(axes, min_length_tortuosity, 'EphB2','g', n_bins=n_bins, 
                                     method='Dun', delta_t=delta_t)
-    red.plot_tortuosity(axes, min_length_tortuosity, 'Red cells', 'r',
+    red.plot_tortuosity(axes, min_length_tortuosity, 'EphrinB1', 'r',
                                     n_bins=n_bins, method='Dun', delta_t=delta_t)
-    axes.set_title(stats.ks_2samp(green.tortuosity,red.tortuosity)) 
-    print(TARGET_FOLDER+green_name+'_tortuosity_combined_dun_t_%d_min_t_%d.png'%(delta_t, min_length_tortuosity))
+    # axes.set_title(stats.ks_2samp(green.tortuosity,red.tortuosity)) 
+    
+    
+    # print(TARGET_FOLDER+green_name+'_tortuosity_combined_dun_t_%d_min_t_%d.png'%(delta_t, min_length_tortuosity))
+    with open(TARGET_FOLDER+green_name+'_tortuosity_combined_dun_t_%d_min_t_%d.txt'%(delta_t, min_length_tortuosity),"w") as f:
+        # f.write(print(stats.ks_2samp(green.tortuosity,red.tortuosity)))
+        print(stats.ks_2samp(green.tortuosity,red.tortuosity),file=f)
     fig.savefig(TARGET_FOLDER+green_name+'_tortuosity_combined_dun_t_%d_min_t_%d.png'%(delta_t, min_length_tortuosity), format='png',dpi=200)
 
-    # #Normal method
-    # fig, axes = plt.subplots(1,1)
-    # green.plot_tortuosity(axes, min_length_tortuosity, 'Green cells','g', n_bins=n_bins)
-    # red.plot_tortuosity(axes, min_length_tortuosity, 'Red cells','r', n_bins=n_bins)
-    # axes.set_title(stats.ks_2samp(green.tortuosity,red.tortuosity))
-    # fig.savefig(TARGET_FOLDER+green_name+'_tortuosity_combined.svg', format='svg')
+    #Normal method
+    fig, axes = plt.subplots(1,1)
+    green.plot_tortuosity(axes, min_length_tortuosity, 'EphB2','g', n_bins=n_bins)
+    red.plot_tortuosity(axes, min_length_tortuosity, 'EphrinB1','r', n_bins=n_bins)
+    axes.set_title(stats.ks_2samp(green.tortuosity,red.tortuosity))
+    fig.savefig(TARGET_FOLDER+green_name+'_tortuosity_combined.svg', format='svg')
 
 
     # #Plot both radial distributions
@@ -150,11 +161,11 @@ for pair in name_pairs:
     
     # n_bins = 300 
     # cutoff_percentage = 70
-    # n_reference_points = 20000
-    # times = [1,110]#np.linspace(0,190,20) 
+    # n_reference_points = 1000
+    # times = [0,190]#np.linspace(0,190,20) 
     
     # for time in times:
-    #     fig, axes = plt.subplots(1,1)
+    #     fig, ax = plt.subplots(1,figsize=(15/2.54, 10/2.54)) # centimeters to inches
     #     #Green particles
     #     green.plot_radial_density(axes, time , n_bins, 'Green cells','g',cutoff_percentange = cutoff_percentage, 
     #                             n_reference_points = n_reference_points)
@@ -167,5 +178,5 @@ for pair in name_pairs:
     #     bin_size = np.sqrt(green.x_max**2+green.y_max**2)/n_bins
     #     axes.set_title('t = %d, bin size = %f'%(time,bin_size))
     #     subfolder = green_name[:green_name.find('/',1,len(green_name))]
-    #     fig.savefig(TARGET_FOLDER+subfolder+'/RDF/'+'RDF_t_%i.png'%time, format='png',dpi=300)
+    # #     fig.savefig(TARGET_FOLDER+subfolder+'/RDF/'+'RDF_t_%i.png'%time, format='png',dpi=300)
 

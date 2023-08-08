@@ -69,9 +69,9 @@ for PATH in PATHS:
 
 
     #Get final RDF
-    n_bins = 300 
-    cutoff_percentage = 60
-    n_reference_points = 2000
+    n_bins = 200 
+    cutoff_percentage = 80
+    n_reference_points = 1000
     fig, axes = plt.subplots(1,1)
     t_final = green.tracks[0][-1][0]
     #Green particles

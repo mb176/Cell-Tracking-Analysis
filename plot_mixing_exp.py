@@ -31,13 +31,13 @@ name_pairs = [['/HighDensitycontrolEphB2/High Density control EphB2_green frames
                 ]
 
 # Select experiment to consider:
-pair = name_pairs[0]
-sourceFolder = '/home/marius/PhD/CellMotility/tracking_23_01'#'/home/marius/PhD/CellMotility/tracking_ignacio_2022/'
-outputFolder = '/home/marius/PhD/CellMotility/Plots/Plots_2023_01'
+pair = name_pairs[2]
+sourceFolder = '/home/marius/PhD/CellMotility/tracking_ignacio_2023/' #tracking_23_01'#'/home/marius/PhD/CellMotility/tracking_ignacio_2022/'
+outputFolder = '/home/marius/PhD/CellMotility/Plots/Plots_Ignacio2023' #Plots_2023_01'
 subfolder = pair[0][:pair[0].rindex("/")]
 
-min_length = 15
-neighbourDistance = 15 # None gives voronoi tesselation
+min_length = 0
+neighbourDistance = 9 # None gives voronoi tesselation
 
 #Load green tracks
 green_name = pair[0][:pair[0].find('f')]
@@ -54,7 +54,7 @@ experiments = [green, red]
 x_length = max(experiments[0].x_max,experiments[1].x_max)
 y_length = max(experiments[0].y_max,experiments[1].y_max)
 max_time = max(experiments[0].find_t_max(), experiments[1].find_t_max())
-
+# print(x_length, y_length)
 time_values = np.array(np.linspace(0,max_time,10),dtype=int)
 
 mixingIndex = np.zeros((3,len(time_values))) # Type: Total, green, red
@@ -66,19 +66,33 @@ for timeIdx, time in enumerate(time_values):
     tmp1, tmp2, nCells = get_positions_and_particle_types(experiments, time, count_cells=True)
     cellNumbers.append(nCells)
 cellNumbers = np.array(cellNumbers)
+print(cellNumbers)
 
 # Plot Mixing index
 fig,ax = plt.subplots(1,1)
-ax.plot(2*time_values,mixingIndex[0,:], label="Overall mixing index", c="blue")
-ax.plot(2*time_values,mixingIndex[1,:], label="Green mixing index", c="green")
-ax.plot(2*time_values,mixingIndex[2,:], label="Red mixing index", c="red")
+# ax.plot(2*time_values,mixingIndex[0,:], label="Overall mixing index", c="blue")
+ax.plot(2*time_values, mixingIndex[1,:]-cellNumbers[:,1]/cellNumbers[:,0], label="Green mixing index adjusted", c="green")
+ax.plot(2*time_values, mixingIndex[2,:]-cellNumbers[:,2]/cellNumbers[:,0], label="Red mixing index adjusted", c="red")
+ax.plot(2*time_values, mixingIndex[1,:], label="Green mixing index", c="green", linestyle="--")
+ax.plot(2*time_values, mixingIndex[2,:], label="Red mixing index", c="red", linestyle="--")
+
+
 # ax.plot(2*time_values,cellNumbers[:,1]/cellNumbers[:,2], label="Green/red ratio", c="black", linestyle="--")
 plt.legend()
 ax.set_xlabel("Time [min]")
-ax.set_ylabel("Demixing Index")
-ax.set_title(f"Neighbour distance = {neighbourDistance}")
+ax.set_ylabel("Adjusted demixing Index")
+# ax.set_title(f"Neighbour distance = {neighbourDistance}")
 fig.savefig(outputFolder+subfolder+f"/mixing_d_{neighbourDistance}.png",dpi=500)
 
+# Plot Mixing index
+fig,ax = plt.subplots(1,1)
+# ax.plot(2*time_values,mixingIndex[0,:], label="Overall mixing index", c="blue")
+ax.plot(2*time_values, mixingIndex[0,:],)
+plt.legend()
+ax.set_xlabel("Time [min]")
+ax.set_ylabel("Demixing Index")
+# ax.set_title(f"Neighbour distance = {neighbourDistance}")
+fig.savefig(outputFolder+subfolder+f"/mixing_all_d_{neighbourDistance}.png",dpi=500)
                 
 # Plot number of particles
 fig,ax = plt.subplots(1,1)
@@ -88,6 +102,43 @@ ax.plot(2*time_values,cellNumbers[:,2], label="Red cells", c="red")
 plt.legend()
 ax.set_xlabel("Time [min]")
 ax.set_ylabel("Number of cells")
-ax.set_title(f"Neighbour distance = {neighbourDistance}")
+# ax.set_title(f"Neighbour distance = {neighbourDistance}")
 fig.savefig(sourceFolder+subfolder+f"/number_of_cells.png",dpi=500)
 plt.show()
+
+# Comparsion of demixing between sorting and control
+fig,ax = plt.subplots(1,1)
+labels=["Control","Sorting"]
+for idx,pair in enumerate(name_pairs[0:2]):
+    #Load green tracks
+    green_name = pair[0][:pair[0].find('f')]
+    green = experiment(green_name)
+    green.read_xml(sourceFolder+pair[0]+'.xml', min_length)
+
+    #Load red tracks
+    red_name = pair[1][:pair[1].find('f')]
+    red = experiment(red_name)
+    red.read_xml(sourceFolder+pair[1]+'.xml', min_length)
+
+    experiments = [green, red]
+
+    x_length = max(experiments[0].x_max,experiments[1].x_max)
+    y_length = max(experiments[0].y_max,experiments[1].y_max)
+    max_time = max(experiments[0].find_t_max(), experiments[1].find_t_max())
+    # print(x_length, y_length)
+    time_values = np.array(np.linspace(0,max_time,10),dtype=int)
+
+    mixingIndex = np.zeros((3,len(time_values))) # Type: Total, green, red
+    for timeIdx, time in enumerate(time_values):
+        mixingIndex[0,timeIdx], mixingIndex[1,timeIdx], mixingIndex[2,timeIdx]= calculate_mixing_index(experiments, time, neighbourDistance)
+    
+    # Plot Mixing index
+    # ax.plot(2*time_values,mixingIndex[0,:], label="Overall mixing index", c="blue")
+    ax.plot(2*time_values, mixingIndex[0,:],label=labels[idx])
+    plt.legend()
+    ax.set_xlabel("Time [min]")
+    ax.set_ylabel("Demixing Index")
+    # ax.set_title(f"Neighbour distance = {neighbourDistance}")
+
+fig.savefig(outputFolder+f"/mixing_comparison_d_{neighbourDistance}.png",dpi=500)
+            

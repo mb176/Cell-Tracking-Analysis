@@ -29,10 +29,10 @@ name_pairs = [['/HighDensitycontrolEphB2/High Density control EphB2_green frames
                 '/Low Density sorting ephrinB1/Low Density sorting ephrinB1_red frames 11 to 211_Tracks']
                 ]
 
-sourceFolder = '/home/marius/PhD/CellMotility/tracking_23_01'#'/home/marius/PhD/CellMotility/tracking_ignacio_2022/'##
+sourceFolder = '/home/marius/PhD/CellMotility/tracking_ignacio_2023'#'/home/marius/PhD/CellMotility/tracking_ignacio_2022/'##
 # outputFolder = '/home/marius/PhD/CellMotility/Plots/Plots_2023_01'
 
-for pair in name_pairs[1:]:
+for pair in name_pairs:
     
     subfolder = pair[0][:pair[0].rindex("/")]
 
@@ -61,7 +61,7 @@ for pair in name_pairs[1:]:
     ax.axis([0, x_length, 0, y_length])
     ax.set_aspect('equal') #Makes both axis have some scaling while keeping the set limits
 
-    R = 6 #Size of 30 micrometer, ca. 6 pixels
+    R = 4.5 #Diameter of 30 micrometer, ca. 9 pixels
     transparency = 0.7 #transparency of circles 
 
     #Record the animation
